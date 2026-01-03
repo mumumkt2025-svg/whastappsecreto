@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile } from 'lucide-react';
+import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck, Lock } from 'lucide-react';
 import { getCurrentTime } from '../services/location';
+import { trackEvent } from '../services/tracking';
 
 interface PaymentPanelProps {
   userCity: string;
@@ -9,8 +11,7 @@ interface PaymentPanelProps {
 
 const PUSHINPAY_TOKEN = "58746|byFyp0QAahk2xlCJok1hz6OV6IiZhELh0a4N0UXbd243fa19";
 
-// Função auxiliar para pegar o slug atual
-const getSlug = () => window.location.pathname.split('/').filter(p => p).pop() || 'home';
+const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
 
 interface GroupMessage {
   id: number;
@@ -35,12 +36,11 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const [showModal, setShowModal] = useState(false);
-  const [step, setStep] = useState<'intro' | 'qr' | 'success'>('intro');
+  const [step, setStep] = useState<'intro' | 'qr1' | 'upsell' | 'qr2' | 'success'>('intro');
   const [loading, setLoading] = useState(false);
   const [pixData, setPixData] = useState<{ qrCodeBase64: string; copiaECola: string; paymentId: string } | null>(null);
   const [timeLeft, setTimeLeft] = useState(15 * 60); 
   const [copyText, setCopyText] = useState("Copiar código PIX");
-  const [showRetentionPopup, setShowRetentionPopup] = useState(false);
 
   const vslVideoRef = useRef<HTMLVideoElement>(null);
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
@@ -83,7 +83,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (step === 'qr' && pixData?.paymentId) {
+    if ((step === 'qr1' || step === 'qr2') && pixData?.paymentId) {
       interval = setInterval(async () => {
         try {
           const response = await fetch(`https://api.pushinpay.com.br/api/transactions/${pixData.paymentId}`, {
@@ -93,15 +93,21 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           if (!response.ok) return;
           const data = await response.json();
           if (data.status === 'paid') {
-             setStep('success');
-             clearInterval(interval);
-             if (window.fbq) {
-               window.fbq('track', 'Purchase', { 
-                 value: 19.99, 
-                 currency: 'BRL',
-                 content_name: getSlug()
-               });
+             if (step === 'qr1') {
+                trackEvent('h4'); // h4 = Venda 1
+                if (window.fbq) {
+                  window.fbq('track', 'Purchase', { value: 8.90, currency: 'BRL', content_name: `${getSlug()}_offer` });
+                }
+                setStep('upsell');
+             } else if (step === 'qr2') {
+                trackEvent('h5'); // h5 = Venda 2 (Final)
+                if (window.fbq) {
+                  window.fbq('track', 'Purchase', { value: 9.90, currency: 'BRL', content_name: `${getSlug()}_upsell` });
+                }
+                setStep('success');
              }
+             setPixData(null);
+             clearInterval(interval);
           }
         } catch (error) {}
       }, 5000);
@@ -110,15 +116,15 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   }, [step, pixData]);
 
   useEffect(() => {
-    if (step === 'qr' && timeLeft > 0) {
+    if ((step === 'qr1' || step === 'qr2') && timeLeft > 0) {
       const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
       return () => clearInterval(timer);
     }
   }, [step, timeLeft]);
 
-  const handleGeneratePix = async () => {
+  const handleGeneratePix = async (valueCents: number, nextStep: 'qr1' | 'qr2') => {
     setLoading(true);
-    if (window.fbq) window.fbq('track', 'AddToCart', { value: 19.99, currency: 'BRL', content_name: getSlug() });
+    if (window.fbq) window.fbq('track', 'AddToCart', { value: valueCents / 100, currency: 'BRL', content_name: getSlug() });
 
     try {
       const response = await fetch('https://api.pushinpay.com.br/api/pix/cashIn', {
@@ -128,7 +134,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ value: 1999 })
+        body: JSON.stringify({ value: valueCents })
       });
       if (!response.ok) throw new Error("Erro na API");
       const data = await response.json();
@@ -137,7 +143,8 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         qrCodeBase64: data.qr_code_base64,
         copiaECola: data.qr_code
       });
-      setStep('qr');
+      setStep(nextStep);
+      setTimeLeft(15 * 60);
     } catch (error) { 
       alert("Erro ao gerar o PIX. Tente novamente."); 
     } finally { setLoading(false); }
@@ -201,30 +208,37 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
       {showModal && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-50 flex items-end sm:items-center justify-center animate-fadeIn">
-          <div className="w-full sm:max-w-[480px] bg-white sm:rounded-xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col relative animate-slideIn">
+          <div className="w-full sm:max-w-[480px] bg-white sm:rounded-xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col relative animate-slideIn">
             <div className="overflow-y-auto p-4 sm:p-6">
+              
+              {/* ETAPA 1: OFERTA INICIAL */}
               {step === 'intro' && (
                 <div className="flex flex-col items-center gap-5">
-                  <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
+                  <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black shadow-inner">
                     <video ref={vslVideoRef} className="w-full h-full object-cover" src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" autoPlay muted loop playsInline onContextMenu={(e) => e.preventDefault()} />
                     {showVslOverlay && (
                       <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/60 cursor-pointer flex justify-center items-center"><VolumeX className="w-10 h-10 text-white" /></div>
                     )}
                   </div>
                   <div className="text-center">
-                      <h2 className="text-lg font-bold">🔥CLUBE SECRETO - {userCity || "VIP"}</h2>
+                      <h2 className="text-lg font-bold text-gray-800 uppercase">🔥 Acesso ao Clube Secreto</h2>
+                      <p className="text-gray-500 text-sm">Últimas vagas para sua região!</p>
                       <div className="my-2">
-                        <span className="text-xl text-gray-400 line-through mr-2">R$ 29,99</span>
-                        <span className="text-4xl font-bold text-gray-900">R$ 19,99</span>
+                        <span className="text-xl text-gray-400 line-through mr-2">R$ 29,90</span>
+                        <span className="text-4xl font-black text-[#16A349]">R$ 8,90</span>
                       </div>
                   </div>
-                  <button onClick={handleGeneratePix} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-lg font-bold text-lg shadow-md active:scale-[0.98]">
-                      {loading ? <Loader2 className="animate-spin mx-auto" /> : "QUERO MEU ACESSO AGORA"}
+                  <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98] transition-all">
+                      {loading ? <Loader2 className="animate-spin mx-auto" /> : "LIBERAR MEU ACESSO AGORA"}
                   </button>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs">
+                    <ShieldCheck size={14} /> Compra 100% Segura e Sigilosa
+                  </div>
                 </div>
               )}
 
-              {step === 'qr' && pixData && (
+              {/* QR CODE 1 */}
+              {step === 'qr1' && pixData && (
                 <div className="flex flex-col">
                    <div className="relative w-full aspect-video rounded-lg overflow-hidden mb-4 bg-black">
                     <video ref={tutorialVideoRef} className="w-full h-full object-cover" src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" autoPlay muted loop playsInline />
@@ -234,9 +248,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                   </div>
                   <div className="flex flex-col items-center">
                      <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded" />
-                     <textarea className="w-full p-2 bg-gray-100 rounded text-xs font-mono mb-4 h-16" readOnly value={pixData.copiaECola} />
-                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
+                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
+                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
+                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
                         {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
                         {copyText}
                      </button>
@@ -244,25 +258,67 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                 </div>
               )}
 
-              {step === 'success' && (
-                <div className="flex flex-col items-center py-10">
-                   <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-                   <h2 className="text-2xl font-bold mb-2">ACESSO LIBERADO!</h2>
-                   <a href="https://xgruposdeputaria.com/" target="_blank" className="w-full bg-[#16A349] text-white py-4 rounded-lg font-bold text-center animate-bounce">ENTRAR NO GRUPO</a>
+              {/* ETAPA 2: UPSELL DE SEGURANÇA */}
+              {step === 'upsell' && (
+                <div className="flex flex-col items-center gap-6 py-4 animate-fadeIn">
+                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-2">
+                    <ShieldCheck size={40} />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h2 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tight">🔒 Sigilo das Casadas</h2>
+                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">
+                      Nosso clube preza pela <b>segurança absoluta das mulheres</b>. Muitas integrantes são casadas e precisam de discrição total.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-blue-800 font-medium">
+                      🛡️ Esta taxa simbólica serve para validar sua integridade e garantir que nenhum conteúdo seja vazado do grupo.
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-gray-400 text-sm">Taxa única de proteção:</span>
+                    <div className="text-4xl font-black text-[#16A349]">R$ 9,90</div>
+                  </div>
+                  <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">
+                      {loading ? <Loader2 className="animate-spin mx-auto" /> : "PROTEGER SIGILO E ENTRAR"}
+                  </button>
+                  <p className="text-gray-400 text-[11px] text-center px-6">
+                    Sua contribuição ajuda a manter o sistema de criptografia que protege a identidade de todas as participantes.
+                  </p>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {showRetentionPopup && !showModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white p-8 rounded-2xl max-w-[380px] w-full text-center shadow-2xl">
-            <h2 className="text-2xl font-black mb-4">ESPERA! 😢</h2>
-            <p className="mb-6 font-medium">As meninas do grupo de {userCity || "sua região"} estão te esperando!</p>
-            <button onClick={() => {setShowRetentionPopup(false); setShowModal(true);}} className="w-full bg-orange-600 text-white py-4 rounded-xl font-bold mb-4">🔥 QUERO ENTRAR AGORA</button>
-            <button onClick={() => setShowRetentionPopup(false)} className="text-gray-400 underline">Não, quero perder essa chance</button>
+              {/* QR CODE 2 */}
+              {step === 'qr2' && pixData && (
+                <div className="flex flex-col">
+                  <div className="bg-[#16A349] text-white p-3 rounded-lg mb-4 text-center font-bold text-sm uppercase tracking-wider">
+                    🔒 Validação de Integridade Ativa
+                  </div>
+                  <div className="flex flex-col items-center">
+                     <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
+                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
+                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
+                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
+                        {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
+                        {copyText}
+                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ETAPA FINAL */}
+              {step === 'success' && (
+                <div className="flex flex-col items-center py-10 animate-bounce">
+                   <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6">
+                     <CheckCircle size={60} />
+                   </div>
+                   <h2 className="text-3xl font-black mb-2 text-gray-900">ACESSO LIBERADO!</h2>
+                   <p className="text-gray-600 mb-8 text-center px-4 font-medium">Obrigado por respeitar o sigilo das nossas integrantes.</p>
+                   <a href="https://xgruposdeputaria.com/" target="_blank" className="w-full bg-[#16A349] text-white py-5 rounded-xl font-bold text-xl text-center shadow-2xl">
+                     ACESSAR GRUPO AGORA 🔥
+                   </a>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
       )}

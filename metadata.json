@@ -1,0 +1,5 @@
+{
+  "name": "Julia Chat",
+  "description": "A simulated WhatsApp chat interface with interactive dialogue flow.",
+  "requestFramePermissions": []
+}

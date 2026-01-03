@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { DIALOGUE, BASE_URL } from './constants';
@@ -6,13 +7,16 @@ import { getUserLocation, getCurrentTime } from './services/location';
 import { ChatBubble } from './components/ChatBubble';
 import { Header } from './components/Header';
 import { PaymentPanel } from './components/PaymentPanel';
+import { Dashboard } from './components/Dashboard';
+import { trackEvent } from './services/tracking';
 
 const BACKGROUND_IMAGE = 'https://i.pinimg.com/736x/56/ea/b7/56eab7512f1021bdd4cf04952ad45a2c.jpg';
 
-// Função auxiliar para pegar o slug atual
-const getSlug = () => window.location.pathname.split('/').filter(p => p).pop() || 'home';
+const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
 
 function App() {
+  const isDashboard = window.location.pathname.endsWith('/painel') || window.location.pathname.endsWith('/painel/');
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentStepId, setCurrentStepId] = useState<string>('START');
   const [locationData, setLocationData] = useState<{ city: string; ddd: string }>({ city: '', ddd: '11' });
@@ -27,52 +31,57 @@ function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const processedSteps = useRef(new Set<string>());
+  const visitTracked = useRef(false);
 
   useEffect(() => {
+    if (isDashboard) return;
+    
+    // h1 = Visita (Garantindo que dispara apenas uma vez por carregamento)
+    if (!visitTracked.current) {
+      trackEvent('h1');
+      visitTracked.current = true;
+    }
+    
     getUserLocation().then(data => setLocationData(data));
-  }, []);
+  }, [isDashboard]);
 
   useEffect(() => {
+    if (isDashboard) return;
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }, 100);
-  }, [messages, typingStatus, activeOptions, inputType]);
+  }, [messages, typingStatus, activeOptions, inputType, isDashboard]);
 
   useEffect(() => {
-    if (inputType === 'text') {
+    if (inputType === 'text' && !isDashboard) {
       setTimeout(() => {
         if (inputRef.current) inputRef.current.focus();
       }, 300); 
     }
-  }, [inputType]);
+  }, [inputType, isDashboard]);
 
   useEffect(() => {
+    if (isDashboard) return;
     if (!currentStepId || !DIALOGUE[currentStepId]) return;
     if (processedSteps.current.has(currentStepId)) return;
     processedSteps.current.add(currentStepId);
 
+    // h2 = Chat Iniciado (Lead começou a interagir/ver as mensagens)
+    if (currentStepId === 'AWAITING_CITY') {
+      trackEvent('h2');
+    }
+
     const step = DIALOGUE[currentStepId];
 
     if (step.action) {
-      if (step.action.type === 'redirect' && step.action.url) {
-        if (window.fbq) {
-          window.fbq('track', 'InitiateCheckout', { 
-            value: 19.99, 
-            currency: 'BRL',
-            content_name: getSlug() 
-          });
-        }
-        setTimeout(() => {
-          window.location.href = step.action!.url!;
-        }, 1000);
-        return;
-      } 
-      else if (step.action.type === 'open_payment') {
+      if (step.action.type === 'open_payment') {
         setTimeout(() => {
            setShowPayment(true);
+           // h3 = Checkout aberto
+           trackEvent('h3');
            if (window.fbq) {
              window.fbq('track', 'InitiateCheckout', { 
-               value: 19.99, 
+               value: 18.80, 
                currency: 'BRL',
                content_name: getSlug()
              });
@@ -148,7 +157,7 @@ function App() {
       }
     };
     processMessages();
-  }, [currentStepId, locationData.city, leadTracked]);
+  }, [currentStepId, locationData.city, leadTracked, isDashboard]);
 
   const handleSendMessage = () => {
     if (!inputText.trim()) return;
@@ -179,6 +188,10 @@ function App() {
     setInputType('none');
     setCurrentStepId(option.next);
   };
+
+  if (isDashboard) {
+    return <Dashboard />;
+  }
 
   const isInputVisible = inputType !== 'none';
 

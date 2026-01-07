@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck, Lock } from 'lucide-react';
 import { getCurrentTime } from '../services/location';
@@ -9,7 +8,10 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-const PUSHINPAY_TOKEN = "58746|byFyp0QAahk2xlCJok1hz6OV6IiZhELh0a4N0UXbd243fa19";
+// CONFIGURAÇÕES SYNCPAY
+const SYNCPAY_CLIENT_ID = "03811fff-b6ec-4902-b89e-9515f7e873a0";
+const SYNCPAY_CLIENT_SECRET = "9b1d037d-d35b-4749-add8-613e0e5c9353";
+const SYNCPAY_BASE_URL = "https://api.syncpay.com.br";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
 
@@ -30,6 +32,12 @@ const generatePhone = (ddd: string) => {
   return `+55 ${ddd} ${part1}-${part2}`;
 };
 
+// Helpers para dados fictícios (SyncPay exige dados do cliente)
+const getRandomCPF = () => {
+  const n = () => Math.floor(Math.random() * 9);
+  return `${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}`;
+};
+
 export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD }) => {
   const [displayedMessages, setDisplayedMessages] = useState<GroupMessage[]>([]);
   const [isTyping, setIsTyping] = useState<string | null>(null);
@@ -38,15 +46,17 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<'intro' | 'qr1' | 'upsell' | 'qr2' | 'success'>('intro');
   const [loading, setLoading] = useState(false);
-  const [pixData, setPixData] = useState<{ qrCodeBase64: string; copiaECola: string; paymentId: string } | null>(null);
+  const [pixData, setPixData] = useState<{ qrCodeUrl: string; copiaECola: string; identifier: string } | null>(null);
   const [timeLeft, setTimeLeft] = useState(15 * 60); 
   const [copyText, setCopyText] = useState("Copiar código PIX");
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
   const vslVideoRef = useRef<HTMLVideoElement>(null);
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const [showVslOverlay, setShowVslOverlay] = useState(true);
   const [showTutorialOverlay, setShowTutorialOverlay] = useState(true);
 
+  // Inicialização das mensagens do grupo
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     let currentMsgIndex = 0;
@@ -81,29 +91,57 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [displayedMessages, isTyping]);
 
+  // Função para obter o Token da SyncPay
+  const getSyncPayToken = async () => {
+    try {
+      const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: SYNCPAY_CLIENT_ID,
+          client_secret: SYNCPAY_CLIENT_SECRET
+        })
+      });
+      const data = await response.json();
+      if (data.access_token) {
+        setAuthToken(data.access_token);
+        return data.access_token;
+      }
+      throw new Error("Falha ao autenticar");
+    } catch (err) {
+      console.error("Erro SyncPay Auth:", err);
+      return null;
+    }
+  };
+
+  // Monitoramento de Status (Polling)
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if ((step === 'qr1' || step === 'qr2') && pixData?.paymentId) {
+    if ((step === 'qr1' || step === 'qr2') && pixData?.identifier && authToken) {
       interval = setInterval(async () => {
         try {
-          const response = await fetch(`https://api.pushinpay.com.br/api/transactions/${pixData.paymentId}`, {
+          const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${pixData.identifier}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${PUSHINPAY_TOKEN}`, 'Accept': 'application/json' }
+            headers: { 
+              'Authorization': `Bearer ${authToken}`,
+              'Accept': 'application/json'
+            }
           });
           if (!response.ok) return;
-          const data = await response.json();
-          if (data.status === 'paid') {
+          const result = await response.json();
+          // SyncPay usa 'completed' para pago
+          if (result.data && result.data.status === 'completed') {
              if (step === 'qr1') {
-                trackEvent('h4'); // h4 = Venda 1
                 if (window.fbq) {
                   window.fbq('track', 'Purchase', { value: 8.90, currency: 'BRL', content_name: `${getSlug()}_offer` });
                 }
+                trackEvent('h4');
                 setStep('upsell');
              } else if (step === 'qr2') {
-                trackEvent('h5'); // h5 = Venda 2 (Final)
                 if (window.fbq) {
                   window.fbq('track', 'Purchase', { value: 9.90, currency: 'BRL', content_name: `${getSlug()}_upsell` });
                 }
+                trackEvent('h5');
                 setStep('success');
              }
              setPixData(null);
@@ -113,7 +151,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       }, 5000);
     }
     return () => clearInterval(interval);
-  }, [step, pixData]);
+  }, [step, pixData, authToken]);
 
   useEffect(() => {
     if ((step === 'qr1' || step === 'qr2') && timeLeft > 0) {
@@ -122,31 +160,56 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     }
   }, [step, timeLeft]);
 
-  const handleGeneratePix = async (valueCents: number, nextStep: 'qr1' | 'qr2') => {
+  const handleGeneratePix = async (value: number, nextStep: 'qr1' | 'qr2') => {
     setLoading(true);
-    if (window.fbq) window.fbq('track', 'AddToCart', { value: valueCents / 100, currency: 'BRL', content_name: getSlug() });
+    if (window.fbq) {
+      window.fbq('track', 'AddToCart', { value: value, currency: 'BRL', content_name: getSlug() });
+    }
 
     try {
-      const response = await fetch('https://api.pushinpay.com.br/api/pix/cashIn', {
+      // 1. Garante o token
+      let token = authToken;
+      if (!token) {
+        token = await getSyncPayToken();
+      }
+      if (!token) throw new Error("Sem token");
+
+      // 2. Gera o Cash-in
+      const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${PUSHINPAY_TOKEN}`,
+          'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ value: valueCents })
+        body: JSON.stringify({
+          amount: value,
+          description: `Acesso Clube Secreto - ${getSlug()}`,
+          client: {
+            name: "Cliente VIP",
+            cpf: getRandomCPF(),
+            email: `cliente${Math.floor(Math.random()*9999)}@gmail.com`,
+            phone: "119" + Math.floor(10000000 + Math.random() * 90000000)
+          }
+        })
       });
-      if (!response.ok) throw new Error("Erro na API");
+
+      if (!response.ok) throw new Error("Erro API SyncPay");
       const data = await response.json();
+      
+      // SyncPay retorna pix_code (copia e cola). Geramos o QR Code visual via Google Charts.
+      const qrCodeUrl = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(data.pix_code)}`;
+
       setPixData({
-        paymentId: data.id,
-        qrCodeBase64: data.qr_code_base64,
-        copiaECola: data.qr_code
+        identifier: data.identifier,
+        qrCodeUrl: qrCodeUrl,
+        copiaECola: data.pix_code
       });
       setStep(nextStep);
       setTimeLeft(15 * 60);
     } catch (error) { 
-      alert("Erro ao gerar o PIX. Tente novamente."); 
+      console.error(error);
+      alert("Erro ao processar pagamento. Tente novamente em instantes."); 
     } finally { setLoading(false); }
   };
 
@@ -228,7 +291,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                         <span className="text-4xl font-black text-[#16A349]">R$ 8,90</span>
                       </div>
                   </div>
-                  <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98] transition-all">
+                  <button onClick={() => handleGeneratePix(8.90, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98] transition-all">
                       {loading ? <Loader2 className="animate-spin mx-auto" /> : "LIBERAR MEU ACESSO AGORA"}
                   </button>
                   <div className="flex items-center gap-2 text-gray-400 text-xs">
@@ -248,8 +311,8 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                   </div>
                   <div className="flex flex-col items-center">
                      <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
+                     <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
+                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
                      <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
                         {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
                         {copyText}
@@ -277,7 +340,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                     <span className="text-gray-400 text-sm">Taxa única de proteção:</span>
                     <div className="text-4xl font-black text-[#16A349]">R$ 9,90</div>
                   </div>
-                  <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">
+                  <button onClick={() => handleGeneratePix(9.90, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">
                       {loading ? <Loader2 className="animate-spin mx-auto" /> : "PROTEGER SIGILO E ENTRAR"}
                   </button>
                   <p className="text-gray-400 text-[11px] text-center px-6">
@@ -294,8 +357,8 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                   </div>
                   <div className="flex flex-col items-center">
                      <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
+                     <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
+                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
                      <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
                         {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
                         {copyText}

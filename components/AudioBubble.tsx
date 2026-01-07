@@ -10,7 +10,8 @@ interface AudioBubbleProps {
   setPlayingAudioId: (id: string | null) => void;
 }
 
-const PROXY = "https://api.allorigins.win/raw?url=";
+// Proxy mais rápido para arquivos de áudio
+const PROXY = "https://corsproxy.io/?";
 
 const PlayIcon = () => (
   <svg viewBox="0 0 34 34" height="34" width="34">
@@ -47,11 +48,13 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
   
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [micColor, setMicColor] = useState('#0cd464');
   const [progressPercent, setProgressPercent] = useState(0);
+  const [isReady, setIsReady] = useState(false);
 
   const isThisPlaying = id === playingAudioId;
   const proxiedSrc = src.startsWith('http') ? `${PROXY}${encodeURIComponent(src)}` : src;
@@ -74,6 +77,8 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
 
       wavesurferRef.current = wavesurfer;
 
+      wavesurfer.on('ready', () => setIsReady(true));
+
       wavesurfer.on('finish', () => {
         setPlayingAudioId(null);
         setMicColor('#0cd464');
@@ -90,27 +95,37 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
 
   useEffect(() => {
     const ws = wavesurferRef.current;
-    if (ws) {
-      if (isThisPlaying) {
-        // Usar o play() do wavesurfer e capturar erro de Abort
-        const playPromise = ws.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            setMicColor('#34b7f1');
-          }).catch(err => {
-            if (err.name !== 'AbortError') {
-              console.error("Erro ao tocar áudio:", err);
-            }
-          });
+    if (!ws) return;
+
+    if (isThisPlaying) {
+      // Pequeno delay para garantir que o browser não aborte por conflito de cliques rápidos
+      const startPlayback = async () => {
+        try {
+          // Se houver uma promessa anterior, espera ou ignora
+          if (playPromiseRef.current) await playPromiseRef.current;
+          
+          playPromiseRef.current = ws.play();
+          await playPromiseRef.current;
+          setMicColor('#34b7f1');
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.warn("Playback falhou:", err);
+          }
+        } finally {
+          playPromiseRef.current = null;
         }
-      } else {
+      };
+      startPlayback();
+    } else {
+      const stopPlayback = async () => {
+        // Se estiver no meio de um play, espera ele processar antes de pausar
+        if (playPromiseRef.current) {
+          try { await playPromiseRef.current; } catch(e){}
+        }
         ws.pause();
-        if (currentTime > 0) {
-            setMicColor('#34b7f1');
-        } else {
-            setMicColor('#0cd464');
-        }
-      }
+        setMicColor(currentTime > 0 ? '#34b7f1' : '#0cd464');
+      };
+      stopPlayback();
     }
   }, [isThisPlaying]);
 
@@ -153,6 +168,7 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
         preload="auto" 
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        crossOrigin="anonymous"
       />
 
       <div className="relative z-10 shrink-0">

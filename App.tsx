@@ -68,13 +68,8 @@ function App() {
           setTypingStatus(msg.type === 'audio' ? 'gravando áudio...' : 'digitando...');
           await new Promise(resolve => setTimeout(resolve, msg.delay));
           
-          const playNotification = () => {
-            const audioSrc = `${PROXY}${encodeURIComponent(BASE_URL + '/audios/notification.mp3')}`;
-            const audio = new Audio(audioSrc);
-            audio.volume = 0.4;
-            audio.play().catch(() => {});
-          };
-          playNotification();
+          const audioSrc = `${PROXY}${encodeURIComponent(BASE_URL + '/audios/notification.mp3')}`;
+          new Audio(audioSrc).play().catch(() => {});
 
           let content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
           content = content.replace('{{city}}', locationData.city);
@@ -89,7 +84,6 @@ function App() {
 
           setMessages(prev => [...prev, newMessage]);
           
-          // Pixel Lead tracking na última mensagem do diálogo inicial
           if (!leadTracked && window.fbq && currentStepId === 'AWAITING_ENTER_CLUB') {
             window.fbq('track', 'Lead', { content_name: getSlug() });
             setLeadTracked(true);
@@ -115,14 +109,11 @@ function App() {
   }, [currentStepId, locationData]);
 
   useEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingStatus]);
 
   const handleSendMessage = () => {
     if (!inputText.trim()) return;
-
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       isUser: true,
@@ -130,13 +121,10 @@ function App() {
       content: inputText,
       timestamp: getCurrentTime()
     };
-
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
-    
-    const currentStep = DIALOGUE[currentStepId];
-    if (currentStep?.response?.next) {
-      setCurrentStepId(currentStep.response.next);
+    if (DIALOGUE[currentStepId]?.response?.next) {
+      setCurrentStepId(DIALOGUE[currentStepId].response.next);
       setInputType('none');
     }
   };
@@ -149,7 +137,6 @@ function App() {
       content: option.text,
       timestamp: getCurrentTime()
     };
-
     setMessages(prev => [...prev, userMsg]);
     setActiveOptions([]);
     setInputType('none');
@@ -157,11 +144,11 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-[#0b141a] relative overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-screen max-w-md mx-auto bg-[#0b141a] relative overflow-hidden">
       <Header status={typingStatus || "online"} />
       
       <div 
-        className="flex-1 overflow-y-auto p-3 space-y-2 pb-24"
+        className="flex-1 overflow-y-auto p-3 space-y-2 pb-32"
         style={{ 
           backgroundImage: `url("${BACKGROUND_IMAGE}")`,
           backgroundSize: '400px',
@@ -172,6 +159,7 @@ function App() {
           <ChatBubble 
             key={msg.id}
             {...msg}
+            userCity={locationData.city}
             playingAudioId={playingAudioId}
             setPlayingAudioId={setPlayingAudioId}
           />
@@ -180,9 +168,9 @@ function App() {
           <div className="flex items-start mb-2 animate-fadeIn">
             <div className="bg-[#262d31] text-[#8696a0] p-2 px-4 rounded-full rounded-tl-none text-xs italic flex items-center gap-2">
               <span className="flex gap-1">
-                <span className="w-1 h-1 bg-gray-500 rounded-full animate-bounce"></span>
-                <span className="w-1 h-1 bg-gray-500 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                <span className="w-1 h-1 bg-gray-500 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:0.4s]"></span>
               </span>
               {typingStatus}
             </div>
@@ -191,14 +179,15 @@ function App() {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0b141a] z-30">
+      {/* FOOTER FLUTUANTE (VOLTOU AO ORIGINAL PERFEITO) */}
+      <div className="absolute bottom-0 left-0 right-0 p-2 z-30 bg-gradient-to-t from-[#0b141a] via-[#0b141a]/90 to-transparent">
         {inputType === 'buttons' && activeOptions.length > 0 && (
-          <div className="flex flex-col gap-2 mb-2 animate-slideUp">
+          <div className="flex flex-col gap-2 mb-3 animate-slideUp">
             {activeOptions.map((opt, i) => (
               <button
                 key={i}
                 onClick={() => handleOptionClick(opt)}
-                className="w-full bg-[#202c33] hover:bg-[#2a3942] text-[#00a884] font-bold py-3 rounded-xl border border-[#ffffff10] transition-all active:scale-95 shadow-lg"
+                className="w-full bg-[#202c33] hover:bg-[#2a3942] text-[#00a884] font-bold py-3.5 rounded-xl border border-white/10 shadow-2xl active:scale-95 transition-all"
               >
                 {opt.text}
               </button>
@@ -207,20 +196,17 @@ function App() {
         )}
 
         {inputType === 'text' && (
-          <div className="flex items-center gap-2 bg-[#202c33] rounded-full px-4 py-2 border border-[#ffffff05]">
+          <div className="flex items-center gap-2 bg-[#202c33] rounded-full px-4 py-2.5 shadow-2xl border border-white/5">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Mensagem"
-              className="flex-1 bg-transparent text-white outline-none text-[15px]"
+              className="flex-1 bg-transparent text-white outline-none text-[16px]"
               autoFocus
             />
-            <button 
-              onClick={handleSendMessage}
-              className="text-[#8696a0] hover:text-[#00a884] transition-colors"
-            >
+            <button onClick={handleSendMessage} className="text-[#8696a0] active:text-[#00a884]">
               <Send size={24} />
             </button>
           </div>

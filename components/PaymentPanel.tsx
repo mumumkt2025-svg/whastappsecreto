@@ -9,7 +9,7 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-const PUSHINPAY_TOKEN = "58478|7AwBygGFcNpRNgAmU0HWZp3VhIbV1xLy22hYFTHt935a7cc7";
+const PUSHINPAY_TOKEN = "58746|byFyp0QAahk2xlCJok1hz6OV6IiZhELh0a4N0UXbd243fa19";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
 

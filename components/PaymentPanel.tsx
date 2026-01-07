@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck } from 'lucide-react';
+import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck, ChevronLeft } from 'lucide-react';
 import { getCurrentTime } from '../services/location';
 import { trackEvent } from '../services/tracking';
 
@@ -9,11 +9,10 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-// CONFIGURAÇÕES SYNCPAY COM PROXY DE CORS
+// CONFIGURAÇÕES SYNCPAY COM PROXY ALLORIGINS (MAIS ESTÁVEL)
 const SYNCPAY_CLIENT_ID = "03811fff-b6ec-4902-b89e-9515f7e873a0";
 const SYNCPAY_CLIENT_SECRET = "9b1d037d-d35b-4749-add8-613e0e5c9353";
-// Usamos o Proxy para permitir que o navegador fale com a API da SyncPay
-const PROXY = "https://corsproxy.io/?";
+const PROXY = "https://api.allorigins.win/raw?url=";
 const SYNCPAY_BASE_URL = "https://api.syncpay.com.br";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
@@ -94,8 +93,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
   const getSyncPayToken = async () => {
     try {
-      const url = `${PROXY}${encodeURIComponent(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`)}`;
-      const response = await fetch(url, {
+      const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`;
+      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+      
+      const response = await fetch(urlWithProxy, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
@@ -146,7 +147,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
              clearInterval(interval);
           }
         } catch (error) {}
-      }, 7000);
+      }, 8000);
     }
     return () => clearInterval(interval);
   }, [step, pixData, authToken]);
@@ -164,7 +165,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
     try {
       let token = authToken || await getSyncPayToken();
-      if (!token) throw new Error("Falha ao obter token de acesso");
+      if (!token) throw new Error("Token indisponível");
 
       const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`;
       const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
@@ -178,17 +179,17 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         },
         body: JSON.stringify({
           amount: value,
-          description: `Clube VIP - ${getSlug()}`,
+          description: `VIP Club ${getSlug()}`,
           client: {
-            name: "Usuario VIP",
+            name: "Premium User",
             cpf: getRandomCPF(),
-            email: `vip${Math.floor(Math.random()*9999)}@gmail.com`,
+            email: `user${Math.floor(Math.random()*9999)}@gmail.com`,
             phone: "119" + Math.floor(10000000 + Math.random() * 90000000)
           }
         })
       });
 
-      if (!response.ok) throw new Error("Erro na geração do PIX");
+      if (!response.ok) throw new Error("Erro Cash-in");
       const data = await response.json();
       
       const qrCodeUrl = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(data.pix_code)}`;
@@ -202,7 +203,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       setTimeLeft(15 * 60);
     } catch (error) { 
       console.error(error);
-      alert("Servidor ocupado. Tente novamente em 5 segundos."); 
+      alert("Erro ao processar. Tente novamente em instantes."); 
     } finally { setLoading(false); }
   };
 
@@ -223,7 +224,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex justify-center animate-fadeIn h-[100dvh]">
       <div className="w-full sm:max-w-[480px] bg-[#0b141a] flex flex-col h-full relative shadow-2xl">
-        {/* HEADER GRUPO */}
         <div className="bg-[#1f2c34] px-4 py-2 flex items-center justify-between z-10 shrink-0 h-[60px]">
           <div className="flex items-center gap-3 overflow-hidden">
              <div className="text-[#d9dee0]"><ChevronLeft size={24} /></div>
@@ -240,7 +240,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           </div>
         </div>
 
-        {/* MENSAGENS DO GRUPO */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3" style={{ backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`, backgroundSize: 'contain' }}>
           {displayedMessages.map((msg) => (
             <div key={msg.id} className="flex mb-3 justify-start animate-fadeIn">
@@ -255,7 +254,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           ))}
         </div>
 
-        {/* INPUT FAKE */}
         <div className="bg-[#202c33] p-2 flex items-center gap-2 shrink-0 h-[62px]">
           <div className="flex gap-4 px-2 text-[#8696a0]"><Smile /><Paperclip /></div>
           <div className="flex-1 bg-[#2a3942] rounded-lg h-[40px] flex items-center px-4"><span className="text-[#8696a0] text-[15px]">Mensagem</span></div>
@@ -271,7 +269,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               {step === 'intro' && (
                 <div className="flex flex-col items-center gap-5">
                   <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black shadow-inner">
-                    <video ref={vslVideoRef} className="w-full h-full object-cover" src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" autoPlay muted loop playsInline onContextMenu={(e) => e.preventDefault()} />
+                    <video ref={vslVideoRef} className="w-full h-full object-cover" src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" autoPlay muted loop playsInline />
                     {showVslOverlay && (
                       <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/60 cursor-pointer flex justify-center items-center"><VolumeX className="w-10 h-10 text-white" /></div>
                     )}
@@ -346,7 +344,3 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     </div>
   );
 };
-
-const ChevronLeft = ({ size }: { size: number }) => (
-  <svg viewBox="0 0 24 24" height={size} width={size} fill="currentColor"><path d="M12,4l1.4,1.4L7.8,11H20v2H7.8l5.6,5.6L12,20l-8-8L12,4z"></path></svg>
-);

@@ -35,13 +35,10 @@ function App() {
 
   useEffect(() => {
     if (isDashboard) return;
-    
-    // h1 = Visita (Garantindo que dispara apenas uma vez por carregamento)
     if (!visitTracked.current) {
       trackEvent('h1');
       visitTracked.current = true;
     }
-    
     getUserLocation().then(data => setLocationData(data));
   }, [isDashboard]);
 
@@ -66,7 +63,6 @@ function App() {
     if (processedSteps.current.has(currentStepId)) return;
     processedSteps.current.add(currentStepId);
 
-    // h2 = Chat Iniciado (Lead começou a interagir/ver as mensagens)
     if (currentStepId === 'AWAITING_CITY') {
       trackEvent('h2');
     }
@@ -77,7 +73,6 @@ function App() {
       if (step.action.type === 'open_payment') {
         setTimeout(() => {
            setShowPayment(true);
-           // h3 = Checkout aberto
            trackEvent('h3');
            if (window.fbq) {
              window.fbq('track', 'InitiateCheckout', { 
@@ -129,10 +124,14 @@ function App() {
           timestamp: getCurrentTime()
         };
 
+        // Som de notificação corrigido para evitar AbortError
         try {
           const audio = new Audio(`${BASE_URL}/audios/notification.mp3`);
           audio.volume = 0.4;
-          await audio.play().catch(() => {});
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {}); // Ignora o erro se a reprodução for interrompida
+          }
         } catch (e) {}
 
         setMessages(prev => [...prev, newMsg]);

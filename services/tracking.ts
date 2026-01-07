@@ -18,20 +18,18 @@ const getNamespace = () => {
   return `vott_v4_${cleanSlug}`;
 };
 
-// Usando corsproxy.io que é mais estável para evitar o erro de CORS que você teve
-const PROXY = "https://corsproxy.io/?";
+// AllOrigins é mais resiliente que o corsproxy.io para APIs
+const PROXY = "https://api.allorigins.win/raw?url=";
 
 export const trackEvent = async (key: 'h1' | 'h2' | 'h3' | 'h4' | 'h5') => {
   const namespace = getNamespace();
   const targetUrl = `${API_BASE}/${namespace}/${key}/up`;
   
   try {
-    // Adicionamos timestamp para evitar cache
     const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl + '?_=' + Date.now())}`;
     
     await fetch(urlWithProxy, { 
-      method: 'GET',
-      mode: 'cors'
+      method: 'GET'
     });
     
     console.log(`[Track] Evento ${key} disparado.`);

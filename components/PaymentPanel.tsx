@@ -9,10 +9,11 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-// CONFIGURAÇÕES SYNCPAY COM PROXY ALLORIGINS (MAIS ESTÁVEL)
+// CONFIGURAÇÕES SYNCPAY
 const SYNCPAY_CLIENT_ID = "03811fff-b6ec-4902-b89e-9515f7e873a0";
 const SYNCPAY_CLIENT_SECRET = "9b1d037d-d35b-4749-add8-613e0e5c9353";
-const PROXY = "https://api.allorigins.win/raw?url=";
+// O Proxy AllOrigins com /raw é o mais estável para requisições POST com body
+const PROXY_RAW = "https://api.allorigins.win/raw?url=";
 const SYNCPAY_BASE_URL = "https://api.syncpay.com.br";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
@@ -53,9 +54,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [authToken, setAuthToken] = useState<string | null>(null);
 
   const vslVideoRef = useRef<HTMLVideoElement>(null);
-  const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const [showVslOverlay, setShowVslOverlay] = useState(true);
-  const [showTutorialOverlay, setShowTutorialOverlay] = useState(true);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -94,17 +93,29 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const getSyncPayToken = async () => {
     try {
       const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`;
-      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+      const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
       
       const response = await fetch(urlWithProxy, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           client_id: SYNCPAY_CLIENT_ID,
           client_secret: SYNCPAY_CLIENT_SECRET
         })
       });
-      const data = await response.json();
+      
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("SyncPay returned non-JSON:", text);
+        return null;
+      }
+
       if (data.access_token) {
         setAuthToken(data.access_token);
         return data.access_token;
@@ -122,7 +133,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       interval = setInterval(async () => {
         try {
           const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${pixData.identifier}`;
-          const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+          const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
           
           const response = await fetch(urlWithProxy, {
             method: 'GET',
@@ -147,7 +158,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
              clearInterval(interval);
           }
         } catch (error) {}
-      }, 8000);
+      }, 7000);
     }
     return () => clearInterval(interval);
   }, [step, pixData, authToken]);
@@ -165,10 +176,15 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
     try {
       let token = authToken || await getSyncPayToken();
-      if (!token) throw new Error("Token indisponível");
+      if (!token) {
+        // Tenta mais uma vez se falhou
+        token = await getSyncPayToken();
+      }
+      
+      if (!token) throw new Error("Não foi possível autenticar na SyncPay.");
 
       const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`;
-      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+      const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
 
       const response = await fetch(urlWithProxy, {
         method: 'POST',
@@ -179,19 +195,20 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         },
         body: JSON.stringify({
           amount: value,
-          description: `VIP Club ${getSlug()}`,
+          description: `Acesso VIP - ${getSlug()}`,
           client: {
-            name: "Premium User",
+            name: "Usuario Clube",
             cpf: getRandomCPF(),
-            email: `user${Math.floor(Math.random()*9999)}@gmail.com`,
+            email: `vip${Math.floor(Math.random()*9999)}@gmail.com`,
             phone: "119" + Math.floor(10000000 + Math.random() * 90000000)
           }
         })
       });
 
-      if (!response.ok) throw new Error("Erro Cash-in");
+      if (!response.ok) throw new Error("Erro ao gerar requisição de PIX.");
       const data = await response.json();
       
+      // QR Code via Google Charts a partir do pix_code retornado
       const qrCodeUrl = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(data.pix_code)}`;
 
       setPixData({
@@ -201,9 +218,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       });
       setStep(nextStep);
       setTimeLeft(15 * 60);
-    } catch (error) { 
+    } catch (error: any) { 
       console.error(error);
-      alert("Erro ao processar. Tente novamente em instantes."); 
+      alert(error.message || "Erro temporário. Tente novamente."); 
     } finally { setLoading(false); }
   };
 
@@ -275,7 +292,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                     )}
                   </div>
                   <div className="text-center">
-                      <h2 className="text-lg font-bold text-gray-800 uppercase">🔥 Acesso ao Clube Secreto</h2>
+                      <h2 className="text-lg font-bold text-gray-800 uppercase tracking-tighter">🔥 Clube Secreto das Casadas</h2>
                       <div className="my-2">
                         <span className="text-xl text-gray-400 line-through mr-2">R$ 29,90</span>
                         <span className="text-4xl font-black text-[#16A349]">R$ 8,90</span>
@@ -284,7 +301,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                   <button onClick={() => handleGeneratePix(8.90, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98]">
                       {loading ? <Loader2 className="animate-spin mx-auto" /> : "LIBERAR MEU ACESSO AGORA"}
                   </button>
-                  <div className="flex items-center gap-2 text-gray-400 text-xs"><ShieldCheck size={14} /> Compra 100% Segura e Sigilosa</div>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs"><ShieldCheck size={14} /> Pagamento Seguro Via Pix</div>
                 </div>
               )}
 
@@ -297,6 +314,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                       {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
                       {copyText}
                    </button>
+                   <p className="mt-4 text-[10px] text-gray-400 text-center uppercase font-bold tracking-widest">Aguardando confirmação automática...</p>
                 </div>
               )}
 
@@ -304,11 +322,11 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                 <div className="flex flex-col items-center gap-6 py-4 animate-fadeIn">
                   <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-2"><ShieldCheck size={40} /></div>
                   <div className="text-center space-y-2">
-                    <h2 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tight">🔒 Sigilo das Casadas</h2>
-                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">Validação de integridade para garantir discrição total.</p>
+                    <h2 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tight">🔒 Validação de Sigilo</h2>
+                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">Taxa de segurança para garantir a discrição das nossas integrantes.</p>
                   </div>
                   <div className="text-center">
-                    <span className="text-gray-400 text-sm">Taxa única:</span>
+                    <span className="text-gray-400 text-sm">Contribuição única:</span>
                     <div className="text-4xl font-black text-[#16A349]">R$ 9,90</div>
                   </div>
                   <button onClick={() => handleGeneratePix(9.90, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">

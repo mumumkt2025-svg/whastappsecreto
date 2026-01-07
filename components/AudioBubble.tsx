@@ -10,7 +10,7 @@ interface AudioBubbleProps {
   setPlayingAudioId: (id: string | null) => void;
 }
 
-// Proxy para evitar erro de CORS no Wavesurfer
+// Proxy para evitar erro de CORS no backend do Render
 const PROXY = "https://api.allorigins.win/raw?url=";
 
 const PlayIcon = () => (
@@ -55,6 +55,8 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
   const [progressPercent, setProgressPercent] = useState(0);
 
   const isThisPlaying = id === playingAudioId;
+  
+  // SEMPRE usar o proxy para áudios externos para evitar erro de CORS
   const proxiedSrc = src.startsWith('http') ? `${PROXY}${encodeURIComponent(src)}` : src;
 
   useEffect(() => {

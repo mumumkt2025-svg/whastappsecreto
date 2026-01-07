@@ -12,8 +12,9 @@ interface PaymentPanelProps {
 // CONFIGURAÇÕES SYNCPAY
 const SYNCPAY_CLIENT_ID = "03811fff-b6ec-4902-b89e-9515f7e873a0";
 const SYNCPAY_CLIENT_SECRET = "9b1d037d-d35b-4749-add8-613e0e5c9353";
-// O Proxy AllOrigins com /raw é o mais estável para requisições POST com body
-const PROXY_RAW = "https://api.allorigins.win/raw?url=";
+
+// O corsproxy.io é mais eficiente para requisições POST com headers customizados
+const PROXY = "https://corsproxy.io/?";
 const SYNCPAY_BASE_URL = "https://api.syncpay.com.br";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
@@ -93,13 +94,12 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const getSyncPayToken = async () => {
     try {
       const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`;
-      const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
+      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
       
       const response = await fetch(urlWithProxy, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           client_id: SYNCPAY_CLIENT_ID,
@@ -107,15 +107,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         })
       });
       
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("SyncPay returned non-JSON:", text);
-        return null;
-      }
-
+      const data = await response.json();
       if (data.access_token) {
         setAuthToken(data.access_token);
         return data.access_token;
@@ -133,13 +125,12 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       interval = setInterval(async () => {
         try {
           const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${pixData.identifier}`;
-          const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
+          const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
           
           const response = await fetch(urlWithProxy, {
             method: 'GET',
             headers: { 
-              'Authorization': `Bearer ${authToken}`,
-              'Accept': 'application/json'
+              'Authorization': `Bearer ${authToken}`
             }
           });
           if (!response.ok) return;
@@ -175,22 +166,16 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     if (window.fbq) window.fbq('track', 'AddToCart', { value: value, currency: 'BRL', content_name: getSlug() });
 
     try {
-      let token = authToken || await getSyncPayToken();
-      if (!token) {
-        // Tenta mais uma vez se falhou
-        token = await getSyncPayToken();
-      }
-      
-      if (!token) throw new Error("Não foi possível autenticar na SyncPay.");
+      const token = await getSyncPayToken();
+      if (!token) throw new Error("Falha na autenticação do pagamento.");
 
       const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`;
-      const urlWithProxy = `${PROXY_RAW}${encodeURIComponent(targetUrl)}`;
+      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
 
       const response = await fetch(urlWithProxy, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -205,10 +190,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         })
       });
 
-      if (!response.ok) throw new Error("Erro ao gerar requisição de PIX.");
+      if (!response.ok) throw new Error("Erro ao gerar PIX.");
       const data = await response.json();
       
-      // QR Code via Google Charts a partir do pix_code retornado
       const qrCodeUrl = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(data.pix_code)}`;
 
       setPixData({
@@ -220,7 +204,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       setTimeLeft(15 * 60);
     } catch (error: any) { 
       console.error(error);
-      alert(error.message || "Erro temporário. Tente novamente."); 
+      alert("Houve um erro ao gerar o pagamento. Tente novamente em instantes."); 
     } finally { setLoading(false); }
   };
 

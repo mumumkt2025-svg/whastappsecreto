@@ -172,7 +172,7 @@ function App() {
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setInputType('none');
-    if (currentStep && currentStep.response?.next) setCurrentStepId(currentStep.response.next);
+    if (currentStep.response?.next) setCurrentStepId(currentStep.response.next);
   };
 
   const handleOptionClick = (option: ButtonOption) => {
@@ -226,7 +226,7 @@ function App() {
           ))}
           {typingStatus === 'digitando...' && (
             <div className="flex mb-2 items-end shrink-0 animate-fadeIn">
-               <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-[30px] h-[30px] rounded-full mr-2" alt="Avatar" />
+               <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-[30px] h-[30px] rounded-full mr-2" />
                <div className="bg-[#262d31] rounded-[18px] rounded-tl-none p-3 shadow-sm inline-flex items-center gap-1 h-9">
                  <span className="w-1.5 h-1.5 bg-[#8c949c] rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                  <span className="w-1.5 h-1.5 bg-[#8c949c] rounded-full animate-bounce [animation-delay:-0.15s]"></span>

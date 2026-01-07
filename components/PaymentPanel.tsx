@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck, Lock } from 'lucide-react';
+import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck } from 'lucide-react';
 import { getCurrentTime } from '../services/location';
 import { trackEvent } from '../services/tracking';
 
@@ -8,9 +9,11 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-// CONFIGURAÇÕES SYNCPAY
+// CONFIGURAÇÕES SYNCPAY COM PROXY DE CORS
 const SYNCPAY_CLIENT_ID = "03811fff-b6ec-4902-b89e-9515f7e873a0";
 const SYNCPAY_CLIENT_SECRET = "9b1d037d-d35b-4749-add8-613e0e5c9353";
+// Usamos o Proxy para permitir que o navegador fale com a API da SyncPay
+const PROXY = "https://corsproxy.io/?";
 const SYNCPAY_BASE_URL = "https://api.syncpay.com.br";
 
 const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
@@ -32,7 +35,6 @@ const generatePhone = (ddd: string) => {
   return `+55 ${ddd} ${part1}-${part2}`;
 };
 
-// Helpers para dados fictícios (SyncPay exige dados do cliente)
 const getRandomCPF = () => {
   const n = () => Math.floor(Math.random() * 9);
   return `${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}${n()}`;
@@ -56,7 +58,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [showVslOverlay, setShowVslOverlay] = useState(true);
   const [showTutorialOverlay, setShowTutorialOverlay] = useState(true);
 
-  // Inicialização das mensagens do grupo
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     let currentMsgIndex = 0;
@@ -91,12 +92,12 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [displayedMessages, isTyping]);
 
-  // Função para obter o Token da SyncPay
   const getSyncPayToken = async () => {
     try {
-      const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`, {
+      const url = `${PROXY}${encodeURIComponent(`${SYNCPAY_BASE_URL}/api/partner/v1/auth-token`)}`;
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
           client_id: SYNCPAY_CLIENT_ID,
           client_secret: SYNCPAY_CLIENT_SECRET
@@ -107,20 +108,22 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         setAuthToken(data.access_token);
         return data.access_token;
       }
-      throw new Error("Falha ao autenticar");
+      return null;
     } catch (err) {
       console.error("Erro SyncPay Auth:", err);
       return null;
     }
   };
 
-  // Monitoramento de Status (Polling)
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if ((step === 'qr1' || step === 'qr2') && pixData?.identifier && authToken) {
       interval = setInterval(async () => {
         try {
-          const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${pixData.identifier}`, {
+          const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/transaction/${pixData.identifier}`;
+          const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+          
+          const response = await fetch(urlWithProxy, {
             method: 'GET',
             headers: { 
               'Authorization': `Bearer ${authToken}`,
@@ -129,18 +132,13 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           });
           if (!response.ok) return;
           const result = await response.json();
-          // SyncPay usa 'completed' para pago
           if (result.data && result.data.status === 'completed') {
              if (step === 'qr1') {
-                if (window.fbq) {
-                  window.fbq('track', 'Purchase', { value: 8.90, currency: 'BRL', content_name: `${getSlug()}_offer` });
-                }
+                if (window.fbq) window.fbq('track', 'Purchase', { value: 8.90, currency: 'BRL', content_name: `${getSlug()}_offer` });
                 trackEvent('h4');
                 setStep('upsell');
              } else if (step === 'qr2') {
-                if (window.fbq) {
-                  window.fbq('track', 'Purchase', { value: 9.90, currency: 'BRL', content_name: `${getSlug()}_upsell` });
-                }
+                if (window.fbq) window.fbq('track', 'Purchase', { value: 9.90, currency: 'BRL', content_name: `${getSlug()}_upsell` });
                 trackEvent('h5');
                 setStep('success');
              }
@@ -148,7 +146,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
              clearInterval(interval);
           }
         } catch (error) {}
-      }, 5000);
+      }, 7000);
     }
     return () => clearInterval(interval);
   }, [step, pixData, authToken]);
@@ -162,20 +160,16 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
   const handleGeneratePix = async (value: number, nextStep: 'qr1' | 'qr2') => {
     setLoading(true);
-    if (window.fbq) {
-      window.fbq('track', 'AddToCart', { value: value, currency: 'BRL', content_name: getSlug() });
-    }
+    if (window.fbq) window.fbq('track', 'AddToCart', { value: value, currency: 'BRL', content_name: getSlug() });
 
     try {
-      // 1. Garante o token
-      let token = authToken;
-      if (!token) {
-        token = await getSyncPayToken();
-      }
-      if (!token) throw new Error("Sem token");
+      let token = authToken || await getSyncPayToken();
+      if (!token) throw new Error("Falha ao obter token de acesso");
 
-      // 2. Gera o Cash-in
-      const response = await fetch(`${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`, {
+      const targetUrl = `${SYNCPAY_BASE_URL}/api/partner/v1/cash-in`;
+      const urlWithProxy = `${PROXY}${encodeURIComponent(targetUrl)}`;
+
+      const response = await fetch(urlWithProxy, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -184,20 +178,19 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         },
         body: JSON.stringify({
           amount: value,
-          description: `Acesso Clube Secreto - ${getSlug()}`,
+          description: `Clube VIP - ${getSlug()}`,
           client: {
-            name: "Cliente VIP",
+            name: "Usuario VIP",
             cpf: getRandomCPF(),
-            email: `cliente${Math.floor(Math.random()*9999)}@gmail.com`,
+            email: `vip${Math.floor(Math.random()*9999)}@gmail.com`,
             phone: "119" + Math.floor(10000000 + Math.random() * 90000000)
           }
         })
       });
 
-      if (!response.ok) throw new Error("Erro API SyncPay");
+      if (!response.ok) throw new Error("Erro na geração do PIX");
       const data = await response.json();
       
-      // SyncPay retorna pix_code (copia e cola). Geramos o QR Code visual via Google Charts.
       const qrCodeUrl = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(data.pix_code)}`;
 
       setPixData({
@@ -209,7 +202,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       setTimeLeft(15 * 60);
     } catch (error) { 
       console.error(error);
-      alert("Erro ao processar pagamento. Tente novamente em instantes."); 
+      alert("Servidor ocupado. Tente novamente em 5 segundos."); 
     } finally { setLoading(false); }
   };
 
@@ -230,11 +223,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex justify-center animate-fadeIn h-[100dvh]">
       <div className="w-full sm:max-w-[480px] bg-[#0b141a] flex flex-col h-full relative shadow-2xl">
+        {/* HEADER GRUPO */}
         <div className="bg-[#1f2c34] px-4 py-2 flex items-center justify-between z-10 shrink-0 h-[60px]">
           <div className="flex items-center gap-3 overflow-hidden">
-             <div className="text-[#d9dee0]">
-               <svg viewBox="0 0 24 24" height="24" width="24" fill="currentColor"><path d="M12,4l1.4,1.4L7.8,11H20v2H7.8l5.6,5.6L12,20l-8-8L12,4z"></path></svg>
-             </div>
+             <div className="text-[#d9dee0]"><ChevronLeft size={24} /></div>
              <div className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0">
                <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20240711-00350743535.webp" className="w-full h-full object-cover" />
              </div>
@@ -248,6 +240,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           </div>
         </div>
 
+        {/* MENSAGENS DO GRUPO */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3" style={{ backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`, backgroundSize: 'contain' }}>
           {displayedMessages.map((msg) => (
             <div key={msg.id} className="flex mb-3 justify-start animate-fadeIn">
@@ -262,6 +255,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           ))}
         </div>
 
+        {/* INPUT FAKE */}
         <div className="bg-[#202c33] p-2 flex items-center gap-2 shrink-0 h-[62px]">
           <div className="flex gap-4 px-2 text-[#8696a0]"><Smile /><Paperclip /></div>
           <div className="flex-1 bg-[#2a3942] rounded-lg h-[40px] flex items-center px-4"><span className="text-[#8696a0] text-[15px]">Mensagem</span></div>
@@ -274,7 +268,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           <div className="w-full sm:max-w-[480px] bg-white sm:rounded-xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col relative animate-slideIn">
             <div className="overflow-y-auto p-4 sm:p-6">
               
-              {/* ETAPA 1: OFERTA INICIAL */}
               {step === 'intro' && (
                 <div className="flex flex-col items-center gap-5">
                   <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black shadow-inner">
@@ -285,99 +278,64 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                   </div>
                   <div className="text-center">
                       <h2 className="text-lg font-bold text-gray-800 uppercase">🔥 Acesso ao Clube Secreto</h2>
-                      <p className="text-gray-500 text-sm">Últimas vagas para sua região!</p>
                       <div className="my-2">
                         <span className="text-xl text-gray-400 line-through mr-2">R$ 29,90</span>
                         <span className="text-4xl font-black text-[#16A349]">R$ 8,90</span>
                       </div>
                   </div>
-                  <button onClick={() => handleGeneratePix(8.90, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98] transition-all">
+                  <button onClick={() => handleGeneratePix(8.90, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98]">
                       {loading ? <Loader2 className="animate-spin mx-auto" /> : "LIBERAR MEU ACESSO AGORA"}
                   </button>
-                  <div className="flex items-center gap-2 text-gray-400 text-xs">
-                    <ShieldCheck size={14} /> Compra 100% Segura e Sigilosa
-                  </div>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs"><ShieldCheck size={14} /> Compra 100% Segura e Sigilosa</div>
                 </div>
               )}
 
-              {/* QR CODE 1 */}
               {step === 'qr1' && pixData && (
-                <div className="flex flex-col">
-                   <div className="relative w-full aspect-video rounded-lg overflow-hidden mb-4 bg-black">
-                    <video ref={tutorialVideoRef} className="w-full h-full object-cover" src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" autoPlay muted loop playsInline />
-                     {showTutorialOverlay && (
-                        <div onClick={() => {if(tutorialVideoRef.current){tutorialVideoRef.current.muted=false; setShowTutorialOverlay(false);}}} className="absolute inset-0 bg-black/60 cursor-pointer flex justify-center items-center"><VolumeX className="w-10 h-10 text-white" /></div>
-                     )}
-                  </div>
-                  <div className="flex flex-col items-center">
-                     <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
-                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
-                        {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
-                        {copyText}
-                     </button>
-                  </div>
+                <div className="flex flex-col items-center">
+                   <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
+                   <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
+                   <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
+                   <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
+                      {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
+                      {copyText}
+                   </button>
                 </div>
               )}
 
-              {/* ETAPA 2: UPSELL DE SEGURANÇA */}
               {step === 'upsell' && (
                 <div className="flex flex-col items-center gap-6 py-4 animate-fadeIn">
-                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-2">
-                    <ShieldCheck size={40} />
-                  </div>
+                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-2"><ShieldCheck size={40} /></div>
                   <div className="text-center space-y-2">
                     <h2 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tight">🔒 Sigilo das Casadas</h2>
-                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">
-                      Nosso clube preza pela <b>segurança absoluta das mulheres</b>. Muitas integrantes são casadas e precisam de discrição total.
-                    </p>
-                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-blue-800 font-medium">
-                      🛡️ Esta taxa simbólica serve para validar sua integridade e garantir que nenhum conteúdo seja vazado do grupo.
-                    </div>
+                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">Validação de integridade para garantir discrição total.</p>
                   </div>
                   <div className="text-center">
-                    <span className="text-gray-400 text-sm">Taxa única de proteção:</span>
+                    <span className="text-gray-400 text-sm">Taxa única:</span>
                     <div className="text-4xl font-black text-[#16A349]">R$ 9,90</div>
                   </div>
                   <button onClick={() => handleGeneratePix(9.90, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">
                       {loading ? <Loader2 className="animate-spin mx-auto" /> : "PROTEGER SIGILO E ENTRAR"}
                   </button>
-                  <p className="text-gray-400 text-[11px] text-center px-6">
-                    Sua contribuição ajuda a manter o sistema de criptografia que protege a identidade de todas as participantes.
-                  </p>
                 </div>
               )}
 
-              {/* QR CODE 2 */}
               {step === 'qr2' && pixData && (
-                <div className="flex flex-col">
-                  <div className="bg-[#16A349] text-white p-3 rounded-lg mb-4 text-center font-bold text-sm uppercase tracking-wider">
-                    🔒 Validação de Integridade Ativa
-                  </div>
-                  <div className="flex flex-col items-center">
-                     <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
-                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
-                        {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
-                        {copyText}
-                     </button>
-                  </div>
+                <div className="flex flex-col items-center">
+                   <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
+                   <img src={pixData.qrCodeUrl} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm bg-white" />
+                   <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600 outline-none" readOnly value={pixData.copiaECola} />
+                   <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
+                      {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
+                      {copyText}
+                   </button>
                 </div>
               )}
 
-              {/* ETAPA FINAL */}
               {step === 'success' && (
                 <div className="flex flex-col items-center py-10 animate-bounce">
-                   <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6">
-                     <CheckCircle size={60} />
-                   </div>
-                   <h2 className="text-3xl font-black mb-2 text-gray-900">ACESSO LIBERADO!</h2>
-                   <p className="text-gray-600 mb-8 text-center px-4 font-medium">Obrigado por respeitar o sigilo das nossas integrantes.</p>
-                   <a href="https://xgruposdeputaria.com/" target="_blank" className="w-full bg-[#16A349] text-white py-5 rounded-xl font-bold text-xl text-center shadow-2xl">
-                     ACESSAR GRUPO AGORA 🔥
-                   </a>
+                   <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6"><CheckCircle size={60} /></div>
+                   <h2 className="text-3xl font-black mb-2 text-gray-900 text-center">ACESSO LIBERADO!</h2>
+                   <a href="https://xgruposdeputaria.com/" target="_blank" className="w-full bg-[#16A349] text-white py-5 rounded-xl font-bold text-xl text-center shadow-2xl">ACESSAR GRUPO AGORA 🔥</a>
                 </div>
               )}
 
@@ -388,3 +346,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     </div>
   );
 };
+
+const ChevronLeft = ({ size }: { size: number }) => (
+  <svg viewBox="0 0 24 24" height={size} width={size} fill="currentColor"><path d="M12,4l1.4,1.4L7.8,11H20v2H7.8l5.6,5.6L12,20l-8-8L12,4z"></path></svg>
+);

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 
@@ -9,14 +10,15 @@ interface AudioBubbleProps {
   setPlayingAudioId: (id: string | null) => void;
 }
 
-// Ícone de Play (Triângulo Cinza)
+// Proxy para evitar erro de CORS no Wavesurfer
+const PROXY = "https://api.allorigins.win/raw?url=";
+
 const PlayIcon = () => (
   <svg viewBox="0 0 34 34" height="34" width="34">
     <path fill="#8c949c" d="M8.5,8.7c0-1.7,1.2-2.4,2.6-1.5l14.4,8.3c1.4,0.8,1.4,2.2,0,3l-14.4,8.3 c-1.4,0.8-2.6,0.2-2.6-1.5V8.7z"></path>
   </svg>
 );
 
-// Ícone de Pause (Com a borda/fundo estilo WhatsApp Web quando ativo)
 const PauseIcon = () => (
   <div className="w-[30px] h-[30px] rounded flex items-center justify-center bg-transparent border-2 border-[#8c949c]/30">
     <svg viewBox="0 0 24 24" height="16" width="16" fill="#8c949c">
@@ -49,26 +51,26 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
   
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [micColor, setMicColor] = useState('#0cd464'); // Verde padrão
+  const [micColor, setMicColor] = useState('#0cd464');
   const [progressPercent, setProgressPercent] = useState(0);
 
   const isThisPlaying = id === playingAudioId;
+  const proxiedSrc = src.startsWith('http') ? `${PROXY}${encodeURIComponent(src)}` : src;
 
-  // Inicializa WaveSurfer
   useEffect(() => {
     if (waveformRef.current && audioRef.current && !wavesurferRef.current) {
       const wavesurfer = WaveSurfer.create({
         container: waveformRef.current,
         media: audioRef.current, 
-        waveColor: '#B0B5BA', // Cinza médio (inativo)
-        progressColor: '#34B7F1', // Azul WhatsApp (ativo)
+        waveColor: '#B0B5BA',
+        progressColor: '#34B7F1',
         barWidth: 2,
         barGap: 2,
         barRadius: 2,
         height: 28,
         cursorWidth: 0, 
         normalize: true,
-        interact: false, // Desabilitamos interação do wavesurfer pois usaremos o input range
+        interact: false,
       });
 
       wavesurferRef.current = wavesurfer;
@@ -86,9 +88,8 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
         wavesurferRef.current = null;
       };
     }
-  }, [src, setPlayingAudioId]);
+  }, [proxiedSrc, setPlayingAudioId]);
 
-  // Controle de Play/Pause
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) {
@@ -108,37 +109,26 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
         }
       }
     }
-  }, [isThisPlaying, setPlayingAudioId]);
+  }, [isThisPlaying]);
 
-  // Atualização de tempo e progresso
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       const curr = audioRef.current.currentTime;
       const dur = audioRef.current.duration;
       setCurrentTime(curr);
-      
-      if (dur > 0) {
-        const pct = (curr / dur) * 100;
-        setProgressPercent(pct);
-      }
+      if (dur > 0) setProgressPercent((curr / dur) * 100);
     }
   };
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       const dur = audioRef.current.duration;
-      if (dur !== Infinity && !isNaN(dur)) {
-        setDuration(dur);
-      }
+      if (dur !== Infinity && !isNaN(dur)) setDuration(dur);
     }
   };
 
   const togglePlay = () => {
-    if (isThisPlaying) {
-      setPlayingAudioId(null);
-    } else {
-      setPlayingAudioId(id);
-    }
+    setPlayingAudioId(isThisPlaying ? null : id);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,10 +136,7 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
-      // Recalcula progresso visual imediatamente para não ter delay
-      if (duration > 0) {
-        setProgressPercent((time / duration) * 100);
-      }
+      if (duration > 0) setProgressPercent((time / duration) * 100);
     }
   };
 
@@ -159,13 +146,12 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
       
       <audio 
         ref={audioRef} 
-        src={src} 
+        src={proxiedSrc} 
         preload="auto" 
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
       />
 
-      {/* Avatar */}
       <div className="relative z-10 shrink-0">
         <img 
           src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" 
@@ -174,7 +160,6 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
         />
       </div>
 
-      {/* Botão Play/Pause */}
       <div className="z-10 shrink-0 ml-2">
           <button 
             onClick={togglePlay} 
@@ -184,16 +169,9 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
           </button>
       </div>
 
-      {/* Area da Waveform e Timer */}
       <div className="flex flex-col flex-grow ml-3 mr-2 justify-center min-w-0 z-10 h-full relative">
-         
-         {/* Container relativo para alinhar a bolinha e o slider com a wave */}
          <div className="relative w-full h-[28px] flex items-center">
-            
-            {/* WaveSurfer Render */}
             <div ref={waveformRef} className="w-full h-full opacity-80 pointer-events-none" />
-            
-            {/* Slider Invisível para interação (Seek) */}
             <input 
               type="range"
               min="0"
@@ -203,8 +181,6 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
               onChange={handleSeek}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30"
             />
-
-            {/* A Bolinha (Knob) Visual */}
             <div 
               className="absolute top-1/2 w-[13px] h-[13px] bg-[#34B7F1] rounded-full border border-black/10 shadow-sm pointer-events-none transition-all duration-75 ease-linear z-20"
               style={{ 
@@ -214,14 +190,10 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
               }} 
             />
          </div>
-         
-         {/* Texto do Tempo: Decorrido / Total */}
          <div className="flex justify-between items-center text-[11px] text-[#8c949c] mt-0.5 leading-none w-full tabular-nums">
             <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
          </div>
       </div>
-
-      {/* Microfone */}
       <MicrophoneIcon color={micColor} />
     </div>
   );

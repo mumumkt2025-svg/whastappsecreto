@@ -10,7 +10,6 @@ interface AudioBubbleProps {
   setPlayingAudioId: (id: string | null) => void;
 }
 
-// Proxy para evitar erro de CORS no backend do Render
 const PROXY = "https://api.allorigins.win/raw?url=";
 
 const PlayIcon = () => (
@@ -55,8 +54,6 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
   const [progressPercent, setProgressPercent] = useState(0);
 
   const isThisPlaying = id === playingAudioId;
-  
-  // SEMPRE usar o proxy para áudios externos para evitar erro de CORS
   const proxiedSrc = src.startsWith('http') ? `${PROXY}${encodeURIComponent(src)}` : src;
 
   useEffect(() => {
@@ -82,7 +79,6 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
         setMicColor('#0cd464');
         setCurrentTime(0);
         setProgressPercent(0);
-        if (audioRef.current) audioRef.current.currentTime = 0;
       });
       
       return () => {
@@ -93,18 +89,23 @@ export const AudioBubble: React.FC<AudioBubbleProps> = ({ id, src, isUser, playi
   }, [proxiedSrc, setPlayingAudioId]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) {
+    const ws = wavesurferRef.current;
+    if (ws) {
       if (isThisPlaying) {
-        audio.play().then(() => {
-          setMicColor('#34b7f1'); 
-        }).catch(err => {
-          console.error("Erro ao tocar:", err);
-          setPlayingAudioId(null);
-        });
+        // Usar o play() do wavesurfer e capturar erro de Abort
+        const playPromise = ws.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            setMicColor('#34b7f1');
+          }).catch(err => {
+            if (err.name !== 'AbortError') {
+              console.error("Erro ao tocar áudio:", err);
+            }
+          });
+        }
       } else {
-        audio.pause();
-        if (audio.currentTime > 0 && !audio.ended) {
+        ws.pause();
+        if (currentTime > 0) {
             setMicColor('#34b7f1');
         } else {
             setMicColor('#0cd464');

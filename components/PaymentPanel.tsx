@@ -7,6 +7,7 @@ const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
 const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
 const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/pix/out";
 const PROXY = "https://corsproxy.io/?";
+const SITE_URL = "https://meninasonline.vercel.app";
 
 interface PaymentPanelProps {
   userCity: string;
@@ -26,10 +27,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [isThaisinhaTyping, setIsThaisinhaTyping] = useState(false);
   
   const vslVideoRef = useRef<HTMLVideoElement>(null);
-  const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Lista de mensagens fixa para evitar erros de índice
+  // Mensagens da simulação com trava de segurança
   const simMessages = useMemo(() => [
     { name: "+55 19 94238-9726", text: "Meu corninho nao para de me ligar gente, afff", time: "14:02", color: "#00a884" },
     { name: "+55 19 94238-9726", text: "Vou fazer ele esperar, olha como eu to agora gente", time: "14:02", color: "#00a884" },
@@ -38,41 +38,36 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     { name: "+55 19 94096-7607", text: `Genteee, o Paulo que entrou ontem me comeu tao bem aqui em ${userCity || 'sua cidade'}`, time: "14:05", color: "#a75cf2" }
   ], [userCity]);
 
-  // Lógica de Simulação Robusta
+  // Simulação do Chat
   useEffect(() => {
     if (step !== 'group_chat_sim') return;
-
     let mounted = true;
     let currentIdx = 0;
 
     const runSimulation = async () => {
-      // Loop das mensagens
       while (mounted && currentIdx < simMessages.length) {
         const msg = simMessages[currentIdx];
         if (msg) {
           setVisibleMessages(prev => [...prev, msg]);
-          setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+          setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         }
         currentIdx++;
         await new Promise(r => setTimeout(r, 2000));
       }
-
-      // Final da simulação -> Thaisinha gravando
       if (mounted) {
         setIsThaisinhaTyping(true);
         await new Promise(r => setTimeout(r, 3500));
         if (mounted) {
           setIsThaisinhaTyping(false);
-          setStep('intro'); // Muda para a tela da VSL
+          setStep('intro');
         }
       }
     };
-
     runSimulation();
     return () => { mounted = false; };
   }, [step, simMessages]);
 
-  // Verificação de Status do PIX (Polling)
+  // Verificação de Pagamento (Polling) - Ajustado para 'COMPLETE'
   useEffect(() => {
     let interval: any;
     if ((step === 'qr1' || step === 'qr2') && pixData?.id) {
@@ -82,9 +77,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           const response = await fetch(url, { headers: { 'X-API-Key': GGPIX_API_KEY } });
           const data = await response.json();
           
-          // O status do GGPIX costuma ser 'COMPLETE' ou 'PAID'
-          const currentStatus = (data.status || "").toUpperCase();
-          if (currentStatus === 'COMPLETE' || currentStatus === 'PAID' || currentStatus === 'COMPLETED') {
+          // Conforme manual: status "COMPLETE" em maiúsculo
+          const status = (data.status || "").toUpperCase();
+          if (status === 'COMPLETE' || status === 'PAID' || status === 'COMPLETED') {
             clearInterval(interval);
             if (step === 'qr1') {
               setStep('upsell');
@@ -93,9 +88,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               setStep('success');
             }
           }
-        } catch (e) {
-          console.warn("Aguardando confirmação do PIX...");
-        }
+        } catch (e) { console.warn("Verificando pagamento..."); }
       }, 4000);
     }
     return () => clearInterval(interval);
@@ -113,7 +106,8 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           description: amountCents === 890 ? 'Acesso VIP Clube Secreto' : 'Pack Lives Gravadas',
           payerName: 'Participante do Clube',
           payerDocument: '52998224725', 
-          externalId: `order_${Date.now()}`
+          externalId: `order_${Date.now()}`,
+          webhookUrl: `${SITE_URL}/api/webhook` // Adicionado conforme instrução do suporte
         })
       });
       const data = await response.json();
@@ -124,7 +118,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         trackEvent(nextStep === 'qr1' ? 'h4' : 'h5');
       }
     } catch (err) {
-      alert("Erro de conexão. Tente gerar novamente.");
+      alert("Erro ao gerar PIX. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -143,7 +137,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  // Contador do PIX
   useEffect(() => {
     if ((step === 'qr1' || step === 'qr2') && timeLeft > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
@@ -151,7 +144,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     }
   }, [timeLeft, step]);
 
-  // 1. CONVITE
   if (step === 'group_invite') {
     return (
       <div className="fixed inset-0 z-50 bg-[#f0f2f5] flex flex-col animate-fadeIn">
@@ -165,7 +157,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           </p>
           <div className="bg-white p-6 rounded-2xl w-full max-w-sm mb-10 shadow-sm border border-black/5 text-center">
             <p className="text-[#414a4f] text-[15px] leading-relaxed">
-              Você foi convidado para o <span className="font-bold text-[#00a884]">Clube Secreto {userCity}</span>. <br/><br/> Entre agora para ver os vídeos que acabaram de postar.
+              Você foi convidado para o <span className="font-bold text-[#00a884]">Clube Secreto {userCity}</span>. <br/><br/> Entre agora para ver os vídeos que as meninas estão postando.
             </p>
           </div>
           <button onClick={() => setStep('group_chat_sim')} className="w-full max-w-sm bg-[#00a884] hover:bg-[#008f6f] text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all uppercase tracking-wider">
@@ -176,7 +168,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     );
   }
 
-  // 2. SIMULAÇÃO
   if (step === 'group_chat_sim') {
     return (
       <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col animate-fadeIn overflow-hidden">
@@ -197,7 +188,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         </div>
         <div className="flex-1 p-4 space-y-3 overflow-y-auto" style={{ backgroundImage: `url('https://i.pinimg.com/736x/56/ea/b7/56eab7512f1021bdd4cf04952ad45a2c.jpg')`, backgroundSize: '400px', backgroundColor: '#0b141a' }}>
           {visibleMessages.map((msg, idx) => {
-            if (!msg || !msg.color) return null; // Prevenção total contra crash
+            if (!msg || !msg.color) return null;
             return (
               <div key={idx} className="flex flex-col items-start animate-slideUp">
                 <div className="bg-[#202c33] p-2 px-3 rounded-xl rounded-tl-none max-w-[85%] shadow-md border-l-4" style={{ borderLeftColor: msg.color }}>
@@ -221,7 +212,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     );
   }
 
-  // 3. SUCESSO
   if (step === 'success') {
     return (
       <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
@@ -229,7 +219,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           <CheckCircle size={60} className="text-[#00a884]" />
         </div>
         <h2 className="text-3xl font-black text-white italic uppercase leading-tight tracking-tighter">ACESSO LIBERADO! 🔥</h2>
-        <p className="text-[#8696a0] mt-3 mb-10 italic text-lg leading-snug">Seja bem-vindo(a)! O seu link de acesso exclusivo ao grupo oficial já está pronto!</p>
+        <p className="text-[#8696a0] mt-3 mb-10 italic text-lg leading-snug">O seu pagamento foi confirmado! O link oficial de acesso ao grupo já está pronto.</p>
         <button onClick={() => window.location.href = 'https://t.me/+exemplo'} className="w-full bg-[#00a884] hover:bg-[#00c298] text-white font-black py-5 rounded-2xl uppercase shadow-[0_10px_30px_rgba(0,168,132,0.4)] active:scale-95 transition-all text-xl">
           ENTRAR NO GRUPO AGORA 😈
         </button>
@@ -237,11 +227,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     );
   }
 
-  // 4. FLUXO DE PAGAMENTO (INTRO, QR, UPSELL)
   return (
     <div className="fixed inset-0 z-50 bg-[#0b141a] overflow-y-auto animate-fadeIn flex flex-col items-center">
       <div className="w-full max-w-md min-h-screen bg-[#0b141a] pb-10 flex flex-col">
-        {/* Header Pagamento */}
         <div className="p-4 bg-[#202c33] flex items-center gap-3 sticky top-0 z-50 border-b border-white/5 shadow-lg">
           <button onClick={() => setStep('group_chat_sim')} className="text-white"><ChevronLeft size={24} /></button>
           <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10">
@@ -281,7 +269,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-white/5 text-center shadow-2xl ring-1 ring-white/5 mt-4">
                 <h2 className="text-3xl font-black text-white mb-2 italic uppercase leading-none tracking-tighter">QUASE LÁ, AMOR! 🔥</h2>
                 <p className="text-[#8696a0] text-[15px] leading-relaxed mb-8 italic px-2">
-                  Garanta sua vaga no grupo VIP. Pague apenas <span className="text-white font-black text-2xl drop-shadow-sm">R$ 8,90</span> para entrar agora.
+                  Você está a um passo. Pague apenas <span className="text-white font-black text-2xl drop-shadow-sm">R$ 8,90</span> e entre no grupo VIP agora.
                 </p>
                 <button 
                   onClick={() => handleGeneratePix(890, 'qr1')} 
@@ -302,7 +290,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               
               <div className="text-center w-full">
                 <div className="flex items-center justify-center gap-2 text-[#8696a0] text-[11px] uppercase font-black tracking-widest mb-1 italic">
-                  <Loader2 size={12} className="animate-spin text-[#00a884]" /> Aguardando pagamento...
+                  <Loader2 size={12} className="animate-spin text-[#00a884]" /> Verificando pagamento...
                 </div>
                 <p className="text-[#00a884] font-black text-5xl tabular-nums drop-shadow-md">{formatTime(timeLeft)}</p>
               </div>
@@ -316,12 +304,12 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
           {step === 'upsell' && (
             <div className="text-center space-y-6 animate-fadeIn pt-6 flex flex-col flex-1">
-              <div className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-2 border border-yellow-500/20">
+              <div className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-2 border border-yellow-500/20 shadow-[0_0_50px_rgba(234,179,8,0.2)]">
                 <TrendingUp size={48} className="text-yellow-500 animate-bounce" />
               </div>
               <h2 className="text-4xl font-black text-white italic uppercase leading-none tracking-tighter">ESPERA, AMOR! 🔥</h2>
               <p className="text-[#8696a0] text-xl px-4 italic leading-tight">
-                Vi que pagou o grupo! Quer levar também meu <span className="text-white font-bold">Arquivo de Lives</span> por apenas mais <span className="text-yellow-500 font-black text-4xl">R$ 9,90</span>?
+                Pagamento do grupo confirmado! Quer levar também meu <span className="text-white font-bold">Arquivo de Lives</span> por apenas mais <span className="text-yellow-500 font-black text-4xl">R$ 9,90</span>?
               </p>
               <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl mt-auto ring-1 ring-yellow-500/10">
                 <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-6 rounded-2xl mb-6 text-2xl uppercase shadow-[0_10px_30px_rgba(234,179,8,0.4)] active:scale-[0.97] transition-all italic">

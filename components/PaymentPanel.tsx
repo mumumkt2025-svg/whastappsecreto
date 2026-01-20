@@ -5,7 +5,8 @@ import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
 const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
-const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/pix/out";
+// Corrigido: Para consultar status de PIX recebido (IN), usamos o endpoint /in/
+const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/pix/in"; 
 const PROXY = "https://corsproxy.io/?";
 const SITE_URL = "https://meninasonline.vercel.app";
 
@@ -29,7 +30,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const vslVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Mensagens da simulação com trava de segurança
   const simMessages = useMemo(() => [
     { name: "+55 19 94238-9726", text: "Meu corninho nao para de me ligar gente, afff", time: "14:02", color: "#00a884" },
     { name: "+55 19 94238-9726", text: "Vou fazer ele esperar, olha como eu to agora gente", time: "14:02", color: "#00a884" },
@@ -38,7 +38,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     { name: "+55 19 94096-7607", text: `Genteee, o Paulo que entrou ontem me comeu tao bem aqui em ${userCity || 'sua cidade'}`, time: "14:05", color: "#a75cf2" }
   ], [userCity]);
 
-  // Simulação do Chat
   useEffect(() => {
     if (step !== 'group_chat_sim') return;
     let mounted = true;
@@ -67,18 +66,25 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     return () => { mounted = false; };
   }, [step, simMessages]);
 
-  // Verificação de Pagamento (Polling) - Ajustado para 'COMPLETE'
   useEffect(() => {
     let interval: any;
     if ((step === 'qr1' || step === 'qr2') && pixData?.id) {
       interval = setInterval(async () => {
         try {
+          // Consultando no endpoint /in/{id} para evitar o erro 404
           const url = `${PROXY}${encodeURIComponent(`${GGPIX_STATUS_URL}/${pixData.id}`)}`;
-          const response = await fetch(url, { headers: { 'X-API-Key': GGPIX_API_KEY } });
-          const data = await response.json();
+          const response = await fetch(url, { 
+            headers: { 
+              'X-API-Key': GGPIX_API_KEY,
+              'Accept': 'application/json'
+            } 
+          });
           
-          // Conforme manual: status "COMPLETE" em maiúsculo
+          if (!response.ok) return;
+
+          const data = await response.json();
           const status = (data.status || "").toUpperCase();
+
           if (status === 'COMPLETE' || status === 'PAID' || status === 'COMPLETED') {
             clearInterval(interval);
             if (step === 'qr1') {
@@ -88,8 +94,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               setStep('success');
             }
           }
-        } catch (e) { console.warn("Verificando pagamento..."); }
-      }, 4000);
+        } catch (e) { 
+          // Silencioso para não poluir console
+        }
+      }, 5000);
     }
     return () => clearInterval(interval);
   }, [step, pixData]);
@@ -107,7 +115,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           payerName: 'Participante do Clube',
           payerDocument: '52998224725', 
           externalId: `order_${Date.now()}`,
-          webhookUrl: `${SITE_URL}/api/webhook` // Adicionado conforme instrução do suporte
+          webhookUrl: `${SITE_URL}/api/webhook`
         })
       });
       const data = await response.json();

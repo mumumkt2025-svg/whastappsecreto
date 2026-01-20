@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-/* Added Info to the lucide-react imports */
 import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, MoreVertical, Video, Phone, Mic, Info } from 'lucide-react';
 import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
 const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
+const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/pix/out";
 const PROXY = "https://corsproxy.io/?";
 
 interface PaymentPanelProps {
@@ -20,22 +20,23 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [loading, setLoading] = useState(false);
   const [pixData, setPixData] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState(900);
-  const [copyText, setCopyText] = useState('Copiar Código PIX');
+  const [copyText, setCopyText] = useState('Copiar código PIX');
   const [showVslOverlay, setShowVslOverlay] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState<any[]>([]);
   const [isThaisinhaTyping, setIsThaisinhaTyping] = useState(false);
   
   const vslVideoRef = useRef<HTMLVideoElement>(null);
+  const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const simMessages = [
-    { name: "+55 " + (userDDD || "11") + " 94238-9726", text: "Acabei de entrar, o conteúdo tá insano! 🔥", time: "14:02", color: "#00a884" },
-    { name: "+55 19 99818-6442", text: "Gente, vale cada centavo. Thaisinha se superou kkkk", time: "14:03", color: "#34b7f1" },
+    { name: "+55 " + (userDDD || "19") + " 94238-9726", text: "Acabei de entrar, o conteúdo tá insano! 🔥", time: "14:02", color: "#00a884" },
+    { name: "+55 " + (userDDD || "19") + " 99818-6442", text: "Gente, vale cada centavo. Thaisinha se superou kkkk", time: "14:03", color: "#34b7f1" },
     { name: "Marcos Oliveira", text: "O pix caiu e o link veio na hora. Top!", time: "14:04", color: "#ff8300" },
     { name: "Julia Santos", text: "Meu Deus, olha esse vídeo novo que ela postou... 😱🔥", time: "14:05", color: "#a75cf2" }
   ];
 
-  // Efeito para simular as mensagens do grupo
+  // Simulação das mensagens do grupo
   useEffect(() => {
     if (step === 'group_chat_sim') {
       let currentIdx = 0;
@@ -48,15 +49,42 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           clearInterval(interval);
           setTimeout(() => {
             setIsThaisinhaTyping(true);
-            setTimeout(() => {
-              setStep('intro');
-            }, 3000);
+            setTimeout(() => setStep('intro'), 3000);
           }, 1000);
         }
       }, 1500);
       return () => clearInterval(interval);
     }
   }, [step]);
+
+  // Polling de pagamento
+  useEffect(() => {
+    let interval: any;
+    if ((step === 'qr1' || step === 'qr2') && pixData?.id) {
+      interval = setInterval(async () => {
+        try {
+          const url = `${PROXY}${encodeURIComponent(`${GGPIX_STATUS_URL}/${pixData.id}`)}`;
+          const response = await fetch(url, {
+            headers: { 'X-API-Key': GGPIX_API_KEY }
+          });
+          const data = await response.json();
+          
+          if (data.status === 'paid' || data.status === 'completed') {
+            clearInterval(interval);
+            if (step === 'qr1') {
+              setStep('upsell');
+              setPixData(null);
+            } else {
+              setStep('success');
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao checar status", e);
+        }
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [step, pixData]);
 
   const handleGeneratePix = async (amountCents: number, nextStep: Step) => {
     setLoading(true);
@@ -71,10 +99,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
         },
         body: JSON.stringify({
           amountCents: amountCents,
-          description: 'Acesso VIP Clube Secreto',
+          description: amountCents === 890 ? 'Acesso VIP Clube Secreto' : 'Pack Lives Gravadas',
           payerName: 'Participante do Clube',
           payerDocument: '52998224725', 
-          externalId: `order_${Math.random().toString(36).substr(2, 9)}`
+          externalId: `order_${Date.now()}`
         })
       });
 
@@ -95,18 +123,11 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     }
   };
 
-  useEffect(() => {
-    if (step === 'qr1' || step === 'qr2') {
-      const timer = setInterval(() => setTimeLeft(prev => (prev > 0 ? prev - 1 : 0)), 1000);
-      return () => clearInterval(timer);
-    }
-  }, [step]);
-
   const handleCopyPix = () => {
     if (!pixData?.pix_code) return;
     navigator.clipboard.writeText(pixData.pix_code);
-    setCopyText('Código Copiado!');
-    setTimeout(() => setCopyText('Copiar Código PIX'), 2000);
+    setCopyText('Copiado!');
+    setTimeout(() => setCopyText('Copiar código PIX'), 2000);
   };
 
   const formatTime = (seconds: number) => {
@@ -115,7 +136,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  // TELA 1: CONVITE
+  // RENDERIZAÇÃO DAS TELAS
   if (step === 'group_invite') {
     return (
       <div className="fixed inset-0 z-50 bg-[#f0f2f5] flex flex-col animate-fadeIn">
@@ -123,16 +144,16 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
            <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-24 h-24 rounded-full border-4 border-white shadow-lg translate-y-12 object-cover" />
         </div>
         <div className="flex-1 pt-16 px-6 flex flex-col items-center">
-          <h2 className="text-xl font-bold text-[#414a4f] text-center mb-1 uppercase tracking-tight">🔥CLUBE SECRETO - {userCity.toUpperCase()}</h2>
+          <h2 className="text-xl font-bold text-[#414a4f] text-center mb-1 uppercase">🔥CLUBE SECRETO - {userCity.toUpperCase()}</h2>
           <p className="text-[#8696a0] text-sm mb-8 flex items-center gap-2">
             <Users size={16} className="text-[#00a884]" /> Grupo Privado · 987 participantes
           </p>
           <div className="bg-white p-6 rounded-2xl w-full max-w-sm mb-10 shadow-sm border border-black/5 text-center">
             <p className="text-[#414a4f] text-[15px] leading-relaxed">
-              Você recebeu um convite VIP para o grupo de <span className="font-bold">{userCity}</span>. <br/><br/> Entre agora para ver as mídias exclusivas.
+              Você recebeu um convite para o grupo de <span className="font-bold">{userCity}</span>. <br/><br/> Toque abaixo para entrar e ver as fotos e vídeos que acabaram de ser postados.
             </p>
           </div>
-          <button onClick={() => setStep('group_chat_sim')} className="w-full max-w-sm bg-[#00a884] text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition-all uppercase tracking-wide">
+          <button onClick={() => setStep('group_chat_sim')} className="w-full max-w-sm bg-[#00a884] text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition-all uppercase">
             Entrar no Grupo
           </button>
         </div>
@@ -140,11 +161,9 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     );
   }
 
-  // TELA 2: SIMULAÇÃO DE CHAT (Layout Dark do Zap)
   if (step === 'group_chat_sim') {
     return (
       <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col animate-fadeIn overflow-hidden">
-        {/* Header do Grupo */}
         <div className="p-3 bg-[#202c33] flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-3">
             <ChevronLeft size={24} className="text-white" />
@@ -153,60 +172,36 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
             </div>
             <div>
               <h3 className="font-bold text-white text-[15px] leading-tight">🔥CLUBE SECRETO - {userCity}</h3>
-              <p className="text-[11px] text-[#8696a0] truncate max-w-[180px]">Thaisinha, +55 {userDDD} 99554-7226, +55...</p>
+              <p className="text-[11px] text-[#8696a0]">987 participantes online</p>
             </div>
           </div>
           <div className="flex items-center gap-4 text-white/70">
-            <Video size={20} />
-            <Phone size={18} />
-            <MoreVertical size={20} />
+            <Video size={20} /><Phone size={18} /><MoreVertical size={20} />
           </div>
         </div>
-
-        {/* Área de Mensagens com Papel de Parede */}
         <div 
-          className="flex-1 p-4 space-y-3 overflow-y-auto relative"
-          style={{ 
-            backgroundImage: `url('https://i.pinimg.com/736x/56/ea/b7/56eab7512f1021bdd4cf04952ad45a2c.jpg')`, 
-            backgroundSize: '400px',
-            backgroundColor: '#0b141a'
-          }}
+          className="flex-1 p-4 space-y-3 overflow-y-auto"
+          style={{ backgroundImage: `url('https://i.pinimg.com/736x/56/ea/b7/56eab7512f1021bdd4cf04952ad45a2c.jpg')`, backgroundSize: '400px' }}
         >
           <div className="flex justify-center mb-6">
-            <span className="bg-[#1f2c34] text-white/60 text-[10px] px-3 py-1 rounded-lg uppercase font-bold tracking-widest shadow-sm">Entrando no grupo...</span>
+            <span className="bg-[#1f2c34] text-white/60 text-[10px] px-3 py-1 rounded-lg uppercase font-bold tracking-widest">Entrando...</span>
           </div>
-
           {visibleMessages.map((msg, idx) => (
             <div key={idx} className="flex flex-col items-start animate-slideUp">
-              <div className="bg-[#202c33] p-2 px-3 rounded-xl rounded-tl-none max-w-[85%] shadow-md border-l-4 border-white/5" style={{ borderLeftColor: msg.color }}>
+              <div className="bg-[#202c33] p-2 px-3 rounded-xl rounded-tl-none max-w-[85%] shadow-md border-l-4" style={{ borderLeftColor: msg.color }}>
                 <p className="text-[11px] font-black uppercase mb-1" style={{ color: msg.color }}>{msg.name}</p>
                 <p className="text-white text-[14px] leading-relaxed">{msg.text}</p>
                 <p className="text-[10px] text-white/30 text-right mt-1">{msg.time}</p>
               </div>
             </div>
           ))}
-
           {isThaisinhaTyping && (
-            <div className="flex items-center gap-2 p-2 px-4 bg-[#202c33]/80 backdrop-blur-sm rounded-full w-fit animate-pulse border border-white/5">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce"></span>
-                <span className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                <span className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce [animation-delay:0.4s]"></span>
-              </div>
-              <span className="text-[#00a884] text-[11px] font-black uppercase">Thaisinha gravando áudio...</span>
+            <div className="flex items-center gap-2 p-2 px-4 bg-[#202c33]/80 rounded-full w-fit animate-pulse border border-white/5">
+              <Mic size={14} className="text-[#00a884]" />
+              <span className="text-[#00a884] text-[11px] font-bold uppercase">Thaisinha gravando áudio...</span>
             </div>
           )}
           <div ref={chatEndRef} />
-        </div>
-
-        {/* Input Fake */}
-        <div className="p-2 bg-[#202c33] flex items-center gap-2">
-           <div className="flex-1 bg-[#2a3942] rounded-full h-11 flex items-center px-4 text-white/30 text-sm">
-             Mensagem
-           </div>
-           <div className="w-11 h-11 bg-[#00a884] rounded-full flex items-center justify-center text-white">
-             <Mic size={20} />
-           </div>
         </div>
       </div>
     );
@@ -215,19 +210,18 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   if (step === 'success') {
     return (
       <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-24 h-24 bg-[#00a884]/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+        <div className="w-24 h-24 bg-[#00a884]/20 rounded-full flex items-center justify-center mb-6">
           <CheckCircle size={60} className="text-[#00a884]" />
         </div>
         <h2 className="text-2xl font-black text-white italic uppercase">Acesso Liberado! 🔥</h2>
-        <p className="text-[#8696a0] mt-2 mb-8">Seu pagamento foi confirmado. Toque abaixo para entrar no grupo oficial.</p>
-        <button onClick={() => window.location.href = 'https://t.me/+exemplo'} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl uppercase shadow-lg shadow-[#00a884]/20 active:scale-95 transition-all">
+        <p className="text-[#8696a0] mt-2 mb-8">Seja bem-vindo(a)! O seu link de acesso exclusivo está pronto.</p>
+        <button onClick={() => window.location.href = 'https://t.me/+exemplo'} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl uppercase shadow-lg active:scale-95">
           ENTRAR NO GRUPO AGORA 😈
         </button>
       </div>
     );
   }
 
-  // TELA 3 EM DIANTE: VSL E PAGAMENTO (Layout Dark Premium)
   return (
     <div className="fixed inset-0 z-40 bg-[#0b141a] overflow-y-auto animate-slideUp">
       <div className="max-w-md mx-auto min-h-screen bg-[#0b141a] pb-10">
@@ -237,32 +231,28 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
             <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h3 className="font-bold text-white leading-tight text-sm">🔥CLUBE SECRETO - {userCity}</h3>
-            <span className="text-[10px] text-[#00a884] flex items-center gap-1 uppercase font-black tracking-tighter"><ShieldCheck size={10} /> PAGAMENTO SEGURO VIA GGPIX</span>
+            <h3 className="font-bold text-white text-sm">🔥CLUBE SECRETO - {userCity}</h3>
+            <span className="text-[10px] text-[#00a884] flex items-center gap-1 uppercase font-bold tracking-tighter"><ShieldCheck size={10} /> PAGAMENTO SEGURO</span>
           </div>
         </div>
 
         <div className="p-6">
           {step === 'intro' && (
             <div className="space-y-6 animate-fadeIn">
-              <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-black aspect-video border border-white/10 ring-4 ring-white/5">
+              <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-black aspect-video border border-white/10">
                 <video ref={vslVideoRef} src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
                 {showVslOverlay && (
-                  <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; vslVideoRef.current.play(); setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center cursor-pointer group">
-                    <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform"><VolumeX size={40} className="text-white" /></div>
-                    <p className="text-white font-black mt-6 text-sm animate-pulse uppercase tracking-widest">Toque para ouvir 🔊</p>
+                  <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; vslVideoRef.current.play(); setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center cursor-pointer">
+                    <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center shadow-2xl"><VolumeX size={40} className="text-white" /></div>
+                    <p className="text-white font-black mt-6 text-sm animate-pulse uppercase tracking-widest">Clique para ouvir 🔊</p>
                   </div>
                 )}
               </div>
-              
-              <div className="bg-[#202c33] p-6 rounded-[2rem] border border-white/5 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10"><Info size={40} className="text-white" /></div>
-                <h2 className="text-2xl font-black text-white mb-3 italic uppercase leading-tight">VAGA LIBERADA! 😈</h2>
-                <p className="text-[#8696a0] text-[15px] leading-relaxed mb-6">
-                  Amor, para cobrir os custos do servidor e manter nossa privacidade, cobramos apenas <span className="text-white font-bold text-xl">R$ 8,90</span>. O acesso é enviado na hora.
-                </p>
-                <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#00a884] hover:bg-[#00c99d] text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95 uppercase text-lg">
-                  {loading ? <Loader2 className="animate-spin" /> : 'QUERO MEU ACESSO AGORA ⚡'}
+              <div className="bg-[#202c33] p-6 rounded-[2rem] border border-white/5 text-center">
+                <h2 className="text-xl font-black text-white mb-2 italic uppercase">ACESSO QUASE PRONTO! 🔥</h2>
+                <p className="text-[#8696a0] text-sm leading-relaxed mb-6">Para manter a segurança do grupo, cobramos apenas <span className="text-white font-bold text-lg">R$ 8,90</span>. O acesso é imediato.</p>
+                <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#00a884] text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 uppercase shadow-xl active:scale-95">
+                  {loading ? <Loader2 className="animate-spin" /> : 'GERAR MEU PIX AGORA ⚡'}
                 </button>
               </div>
             </div>
@@ -270,55 +260,44 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
           {(step === 'qr1' || step === 'qr2') && pixData && (
             <div className="flex flex-col items-center animate-fadeIn">
-              <div className="bg-white p-5 rounded-[3rem] mb-10 shadow-2xl border-[6px] border-[#00a884] w-full max-w-[320px] aspect-square flex items-center justify-center">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(pixData.pix_code)}`} 
-                  alt="QR Code PIX" 
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://chart.googleapis.com/chart?chs=350x350&cht=qr&chl=${encodeURIComponent(pixData.pix_code)}`;
-                  }}
-                />
+              {/* Tutorial igual ao exemplo do usuário */}
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-black aspect-video w-full mb-6">
+                <video ref={tutorialVideoRef} src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                <div onClick={() => { if(tutorialVideoRef.current){tutorialVideoRef.current.muted=false;}}} className="absolute top-2 right-2 bg-black/40 p-2 rounded-full cursor-pointer"><VolumeX size={16} className="text-white" /></div>
+              </div>
+
+              <div className="bg-white p-4 rounded-[2.5rem] mb-6 shadow-2xl border-[5px] border-[#00a884] w-full max-w-[280px] aspect-square flex items-center justify-center">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixData.pix_code)}`} alt="QR Code" className="w-full h-full" />
               </div>
               
-              <div className="text-center mb-10">
-                <p className="text-[#00a884] font-black text-6xl mb-2 tabular-nums">{formatTime(timeLeft)}</p>
-                <div className="flex items-center gap-2 justify-center text-[#8696a0] text-xs uppercase font-black tracking-widest">
-                  <div className="w-2 h-2 bg-[#00a884] rounded-full animate-pulse"></div>
-                  Aguardando Pagamento...
-                </div>
+              <div className="text-center mb-6">
+                <h2 className="text-white font-black text-3xl mb-1 uppercase italic">Aguardando...</h2>
+                <p className="text-[#00a884] font-black text-4xl tabular-nums">{formatTime(timeLeft)}</p>
               </div>
 
-              <button 
-                onClick={handleCopyPix} 
-                className="w-full bg-[#202c33] text-white font-bold py-5 rounded-3xl border border-white/10 flex items-center justify-center gap-4 active:scale-95 transition-all shadow-2xl mb-8 group"
-              >
-                {copyText === 'Código Copiado!' ? <CheckCircle className="text-[#00a884]" /> : <Copy size={24} className="group-hover:rotate-12 transition-transform" />}
-                <span className="text-xl uppercase tracking-wide">{copyText}</span>
+              <button onClick={handleCopyPix} className="w-full bg-[#202c33] text-white font-bold py-5 rounded-2xl border border-white/10 flex items-center justify-center gap-3 shadow-xl mb-6">
+                <Copy size={24} /><span className="text-lg uppercase">{copyText}</span>
               </button>
-
-              <p className="text-[#8696a0] text-[13px] text-center italic max-w-[300px] leading-relaxed opacity-60">
-                Abra seu banco, escolha "Pagar com PIX" e cole o código. <br/> Seu link de acesso será liberado em segundos.
-              </p>
+              
+              <div className="bg-[#00a884]/10 border border-[#00a884]/20 p-4 rounded-xl flex items-center gap-3 w-full">
+                <Loader2 size={20} className="text-[#00a884] animate-spin" />
+                <p className="text-[#00a884] text-xs font-bold uppercase">Detectando pagamento automaticamente...</p>
+              </div>
             </div>
           )}
 
           {step === 'upsell' && (
-            <div className="text-center space-y-6 animate-fadeIn pt-10">
-              <div className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-yellow-500/20 shadow-2xl">
-                <TrendingUp size={60} className="text-yellow-500" />
-              </div>
-              <h2 className="text-4xl font-black text-white italic uppercase leading-tight">ESPERA, AMOR! 🔥</h2>
-              <p className="text-[#8696a0] text-lg px-4">
-                Quer levar também meu <span className="text-white font-bold uppercase">Pack de Lives Gravadas</span> por apenas mais <span className="text-yellow-500 font-black text-2xl">R$ 9,90</span>?
+            <div className="text-center space-y-6 animate-fadeIn pt-6">
+              <TrendingUp size={60} className="text-yellow-500 mx-auto mb-4" />
+              <h2 className="text-3xl font-black text-white italic uppercase">ESPERA, AMOR! 🔥</h2>
+              <p className="text-[#8696a0] text-lg px-4 italic">
+                Quer levar também meu <span className="text-white font-bold">Arquivo de Lives Gravadas</span> por apenas mais <span className="text-yellow-500 font-bold text-2xl">R$ 9,90</span>?
               </p>
-              <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl">
-                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-5 rounded-2xl mb-6 text-xl uppercase shadow-lg active:scale-95 transition-all">
+              <div className="bg-[#202c33] p-6 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl">
+                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 text-[#0b141a] font-black py-5 rounded-2xl mb-4 text-xl uppercase shadow-lg active:scale-95 transition-all">
                   {loading ? <Loader2 className="animate-spin mx-auto" /> : 'SIM, QUERO TUDO AGORA! 😈'}
                 </button>
-                <button onClick={() => setStep('success')} className="text-[#8696a0] text-sm underline underline-offset-8 decoration-white/10 hover:text-white transition-colors">
-                  Não, quero apenas o acesso básico
-                </button>
+                <button onClick={() => setStep('success')} className="text-[#8696a0] text-sm underline opacity-50">Não, quero apenas o acesso básico</button>
               </div>
             </div>
           )}

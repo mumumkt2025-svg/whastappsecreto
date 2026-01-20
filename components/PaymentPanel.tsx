@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, Info } from 'lucide-react';
+import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, Info, MessageCircle } from 'lucide-react';
 import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
@@ -12,7 +12,7 @@ interface PaymentPanelProps {
   userDDD: string;
 }
 
-type Step = 'group_invite' | 'intro' | 'qr1' | 'upsell' | 'qr2' | 'success';
+type Step = 'group_invite' | 'group_chat_sim' | 'intro' | 'qr1' | 'upsell' | 'qr2' | 'success';
 
 export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD }) => {
   const [step, setStep] = useState<Step>('group_invite');
@@ -21,8 +21,33 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const [timeLeft, setTimeLeft] = useState(900);
   const [copyText, setCopyText] = useState('Copiar Código PIX');
   const [showVslOverlay, setShowVslOverlay] = useState(true);
+  const [simMessages, setSimMessages] = useState<any[]>([]);
   
   const vslVideoRef = useRef<HTMLVideoElement>(null);
+
+  const groupConversations = [
+    { name: "Marcos Oliveira", text: "Acabei de entrar, o conteúdo tá insano! 🔥", time: "14:02" },
+    { name: "Julia Santos", text: "Gente, vale cada centavo. Thaisinha se superou kkkk", time: "14:03" },
+    { name: "Ricardo Silva", text: "O pix caiu e o link veio na hora. Top!", time: "14:04" },
+    { name: "Amanda Costa", text: "Já assisti quase tudo, recomendo muito o grupo vip.", time: "14:05" }
+  ];
+
+  // Simulação das mensagens do grupo
+  useEffect(() => {
+    if (step === 'group_chat_sim') {
+      let currentIdx = 0;
+      const interval = setInterval(() => {
+        if (currentIdx < groupConversations.length) {
+          setSimMessages(prev => [...prev, groupConversations[currentIdx]]);
+          currentIdx++;
+        } else {
+          clearInterval(interval);
+          setTimeout(() => setStep('intro'), 2000);
+        }
+      }, 1200);
+      return () => clearInterval(interval);
+    }
+  }, [step]);
 
   const handleGeneratePix = async (amountCents: number, nextStep: Step) => {
     setLoading(true);
@@ -45,23 +70,16 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       });
 
       const data = await response.json();
-
-      // Verificação rigorosa do retorno da GGPIX
       const code = data.pixCopyPaste || data.pixCode;
       
       if (code) {
-        setPixData({ 
-          pix_code: code, 
-          id: data.id 
-        });
+        setPixData({ pix_code: code, id: data.id });
         setStep(nextStep);
-        trackEvent('h4');
+        trackEvent(nextStep === 'qr1' ? 'h4' : 'h5');
       } else {
-        console.error("Resposta inválida da GGPIX:", data);
         alert("Erro ao gerar pagamento. Tente novamente.");
       }
     } catch (err) {
-      console.error("Erro de conexão GGPIX:", err);
       alert("Falha na conexão. Verifique sua internet.");
     } finally {
       setLoading(false);
@@ -88,6 +106,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  // STEP 1: CONVITE
   if (step === 'group_invite') {
     return (
       <div className="fixed inset-0 z-50 bg-[#f0f2f5] flex flex-col animate-fadeIn">
@@ -101,12 +120,48 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           </p>
           <div className="bg-white p-5 rounded-xl w-full max-w-sm mb-10 shadow-sm border border-black/5 text-center">
             <p className="text-[#414a4f] text-sm leading-relaxed">
-              Você recebeu um convite para este grupo VIP. <br/><br/> Toque abaixo para ver o vídeo de boas-vindas.
+              Você recebeu um convite VIP. <br/><br/> Toque abaixo para entrar e ver os conteúdos exclusivos que acabaram de ser postados.
             </p>
           </div>
-          <button onClick={() => setStep('intro')} className="w-full max-w-sm bg-[#00a884] text-white font-bold py-4 rounded-lg shadow-md active:scale-95 transition-all uppercase">
+          <button onClick={() => setStep('group_chat_sim')} className="w-full max-w-sm bg-[#00a884] text-white font-bold py-4 rounded-lg shadow-md active:scale-95 transition-all uppercase">
             Entrar no Grupo
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // STEP 2: SIMULAÇÃO DE CONVERSA
+  if (step === 'group_chat_sim') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col animate-fadeIn">
+        <div className="p-4 bg-[#202c33] flex items-center gap-3 border-b border-white/5">
+          <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10">
+            <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white text-sm">Clube Secreto da Thaisinha</h3>
+            <span className="text-[10px] text-[#00a884] font-bold">987 membros online</span>
+          </div>
+        </div>
+        <div 
+          className="flex-1 p-4 space-y-3 overflow-y-auto"
+          style={{ backgroundImage: `url('https://i.pinimg.com/736x/56/ea/b7/56eab7512f1021bdd4cf04952ad45a2c.jpg')`, backgroundSize: 'cover' }}
+        >
+          <div className="flex justify-center mb-4">
+            <span className="bg-[#1f2c34] text-white/50 text-[10px] px-3 py-1 rounded-lg uppercase font-bold">Entrando no grupo...</span>
+          </div>
+          {simMessages.map((msg, idx) => (
+            <div key={idx} className="bg-[#262d31] p-3 rounded-xl rounded-tl-none max-w-[85%] shadow-md animate-slideIn">
+              <p className="text-[#00a884] text-[10px] font-black uppercase mb-1">{msg.name}</p>
+              <p className="text-white text-sm">{msg.text}</p>
+              <p className="text-[9px] text-white/30 text-right mt-1">{msg.time}</p>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 p-2 bg-white/5 rounded-full w-fit animate-pulse">
+            <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full"></div>
+            <span className="text-[#00a884] text-[10px] font-bold">Thaisinha está gravando áudio...</span>
+          </div>
         </div>
       </div>
     );
@@ -140,7 +195,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
         <div className="p-6">
           {step === 'intro' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fadeIn">
               <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-black aspect-video border border-white/10">
                 <video ref={vslVideoRef} src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
                 {showVslOverlay && (
@@ -152,8 +207,8 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               </div>
               <div className="bg-[#202c33] p-6 rounded-3xl border border-white/5">
                 <h2 className="text-xl font-black text-white mb-3 italic">ACESSO QUASE PRONTO! 🔥</h2>
-                <p className="text-[#8696a0] text-sm leading-relaxed mb-6">Amor, cobramos apenas <span className="text-white font-bold text-lg">R$ 19,99</span> pela vaga. O acesso é liberado na hora.</p>
-                <button onClick={() => handleGeneratePix(1999, 'qr1')} disabled={loading} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 uppercase">
+                <p className="text-[#8696a0] text-sm leading-relaxed mb-6">Amor, cobramos apenas <span className="text-white font-bold text-lg">R$ 8,90</span> pela sua vaga vip. O acesso é liberado na hora.</p>
+                <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 uppercase">
                   {loading ? <Loader2 className="animate-spin" /> : 'GERAR MEU PIX AGORA ⚡'}
                 </button>
               </div>
@@ -162,15 +217,13 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
           {(step === 'qr1' || step === 'qr2') && pixData && (
             <div className="flex flex-col items-center animate-fadeIn">
-              {/* Box do QR Code com borda verde conforme o print */}
               <div className="bg-white p-4 rounded-[2.5rem] mb-8 shadow-2xl border-[5px] border-[#00a884] w-full max-w-[320px] aspect-square flex items-center justify-center">
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixData.pix_code)}`} 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(pixData.pix_code)}`} 
                   alt="QR Code PIX" 
                   className="w-full h-full object-contain p-2"
                   onError={(e) => {
-                    // Fallback para Google Charts se o primeiro falhar
-                    (e.target as HTMLImageElement).src = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(pixData.pix_code)}`;
+                    (e.target as HTMLImageElement).src = `https://chart.googleapis.com/chart?chs=350x350&cht=qr&chl=${encodeURIComponent(pixData.pix_code)}`;
                   }}
                 />
               </div>
@@ -185,7 +238,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                 className="w-full bg-[#202c33] text-white font-bold py-5 rounded-2xl border border-white/10 flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl mb-8"
               >
                 {copyText === 'Código Copiado!' ? <CheckCircle className="text-[#00a884]" /> : <Copy size={24} />}
-                <span className="text-xl">{copyText}</span>
+                <span className="text-xl uppercase">{copyText}</span>
               </button>
 
               <p className="text-[#8696a0] text-[12px] text-center italic max-w-[300px] leading-relaxed opacity-60">

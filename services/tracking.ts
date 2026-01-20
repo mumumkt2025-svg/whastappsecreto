@@ -1,3 +1,4 @@
+
 const API_BASE = 'https://whatsapp-backend-vott.onrender.com';
 const PROXY = "https://corsproxy.io/?";
 
@@ -15,10 +16,10 @@ export const trackEvent = async (event: string) => {
   
   try {
     const response = await fetch(urlWithProxy);
-    if (!response.ok) throw new Error('Tracking failed');
-    return true;
+    // Falha silenciosa se o backend de tracking não responder
+    return response.ok;
   } catch (err) {
-    console.error(`Error tracking ${event}:`, err);
+    // Não registramos erro no console para evitar poluição durante 404s do backend externo
     return false;
   }
 };
@@ -30,6 +31,7 @@ export const getStats = async () => {
   
   try {
     const response = await fetch(urlWithProxy);
+    if (!response.ok) throw new Error();
     const data = await response.json();
     return {
       visits: data.h1 || 0,
@@ -39,7 +41,6 @@ export const getStats = async () => {
       sale2: data.h5 || 0
     };
   } catch (err) {
-    console.error('Error fetching stats:', err);
     return { visits: 0, chat: 0, checkout: 0, sale1: 0, sale2: 0 };
   }
 };

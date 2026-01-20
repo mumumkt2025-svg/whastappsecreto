@@ -1,179 +1,85 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, MoreVertical, Video, Phone, Mic, Paperclip, Smile, ShieldCheck, Lock } from 'lucide-react';
-import { getCurrentTime } from '../services/location';
+import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, Info } from 'lucide-react';
 import { trackEvent } from '../services/tracking';
+
+const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
+const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
+const PROXY = "https://corsproxy.io/?";
 
 interface PaymentPanelProps {
   userCity: string;
   userDDD: string;
 }
 
-const PUSHINPAY_TOKEN = "58746|byFyp0QAahk2xlCJok1hz6OV6IiZhELh0a4N0UXbd243fa19";
-
-const getSlug = () => window.location.pathname.replace('/painel', '').split('/').filter(p => p).pop() || 'home';
-
-interface GroupMessage {
-  id: number;
-  phone: string;
-  content?: string;
-  media?: { type: 'image' | 'video', url: string };
-  avatar?: string;
-  time: string;
-  isMe?: boolean;
-  delay?: number;
-}
-
-const generatePhone = (ddd: string) => {
-  const part1 = Math.floor(90000 + Math.random() * 9000);
-  const part2 = Math.floor(1000 + Math.random() * 9000);
-  return `+55 ${ddd} ${part1}-${part2}`;
-};
+type Step = 'group_invite' | 'intro' | 'qr1' | 'upsell' | 'qr2' | 'success';
 
 export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD }) => {
-  const [displayedMessages, setDisplayedMessages] = useState<GroupMessage[]>([]);
-  const [isTyping, setIsTyping] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  
-  const [showModal, setShowModal] = useState(false);
-  const [step, setStep] = useState<'intro' | 'qr1' | 'upsell' | 'qr2' | 'success'>('intro');
+  const [step, setStep] = useState<Step>('group_invite');
   const [loading, setLoading] = useState(false);
-  const [pixData, setPixData] = useState<{ qrCodeBase64: string; copiaECola: string; paymentId: string } | null>(null);
-  const [timeLeft, setTimeLeft] = useState(15 * 60); 
-  const [copyText, setCopyText] = useState("Copiar código PIX");
-
-  const vslVideoRef = useRef<HTMLVideoElement>(null);
-  const tutorialVideoRef = useRef<HTMLVideoElement>(null);
+  const [pixData, setPixData] = useState<any>(null);
+  const [timeLeft, setTimeLeft] = useState(900);
+  const [copyText, setCopyText] = useState('Copiar Código PIX');
   const [showVslOverlay, setShowVslOverlay] = useState(true);
-  const [showTutorialOverlay, setShowTutorialOverlay] = useState(true);
+  
+  const vslVideoRef = useRef<HTMLVideoElement>(null);
 
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let currentMsgIndex = 0;
-
-    const dynamicMessages: GroupMessage[] = [
-      { id: 1, phone: generatePhone(userDDD), content: "Meu corninho nao para de me ligar gente, afff", avatar: "https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20230920-204325646464.webp", delay: 600, time: getCurrentTime() },
-      { id: 2, phone: generatePhone(userDDD), content: "Vou fazer ele esperar, olha como eu to agora gente", avatar: "https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20230920-204325646464.webp", delay: 1500, time: getCurrentTime() },
-      { id: 3, phone: generatePhone(userDDD), media: { type: 'image', url: "https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20240925-211627.webp" }, avatar: "https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20230920-204325646464.webp", delay: 1000, time: getCurrentTime() },
-      { id: 4, phone: generatePhone(userDDD === '11' ? '21' : '11'), content: "O meu ja adestrei, pica nova todo dia kkk", avatar: "https://midia.jdfnu287h7dujn2jndjsifd.com/1718211968653.webp", delay: 2000, time: getCurrentTime() },
-      { id: 5, phone: generatePhone(userDDD), content: "Genteee, o Paulo que entrou ontem me comeu tao bem", avatar: "https://midia.jdfnu287h7dujn2jndjsifd.com/1641853871190.webp", delay: 2000, time: getCurrentTime() }
-    ];
-
-    const processNextMessage = async () => {
-      if (currentMsgIndex >= dynamicMessages.length) {
-        timeoutId = setTimeout(() => setShowModal(true), 1500);
-        return;
-      }
-      const msgData = dynamicMessages[currentMsgIndex];
-      setIsTyping(msgData.phone);
-      await new Promise(r => setTimeout(r, 1000));
-      setIsTyping(null);
-      setDisplayedMessages(prev => [...prev, { ...msgData, time: getCurrentTime() }]);
-      currentMsgIndex++;
-      timeoutId = setTimeout(processNextMessage, msgData.delay || 1000);
-    };
-
-    processNextMessage();
-    return () => clearTimeout(timeoutId);
-  }, [userDDD]);
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [displayedMessages, isTyping]);
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if ((step === 'qr1' || step === 'qr2') && pixData?.paymentId) {
-      interval = setInterval(async () => {
-        try {
-          const response = await fetch(`https://api.pushinpay.com.br/api/transactions/${pixData.paymentId}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${PUSHINPAY_TOKEN}`, 'Accept': 'application/json' }
-          });
-          if (!response.ok) return;
-          const data = await response.json();
-          if (data.status === 'paid') {
-             // PRIORIDADE MÁXIMA: FACEBOOK PIXEL PRIMEIRO
-             if (step === 'qr1') {
-                if (window.fbq) {
-                  window.fbq('track', 'Purchase', { 
-                    value: 8.90, 
-                    currency: 'BRL', 
-                    content_name: `${getSlug()}_offer` 
-                  });
-                }
-                // Depois avisamos o painel interno (sem travar a execução)
-                trackEvent('h4');
-                setStep('upsell');
-             } else if (step === 'qr2') {
-                if (window.fbq) {
-                  window.fbq('track', 'Purchase', { 
-                    value: 9.90, 
-                    currency: 'BRL', 
-                    content_name: `${getSlug()}_upsell` 
-                  });
-                }
-                // Depois avisamos o painel interno
-                trackEvent('h5');
-                setStep('success');
-             }
-             setPixData(null);
-             clearInterval(interval);
-          }
-        } catch (error) {}
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [step, pixData]);
-
-  useEffect(() => {
-    if ((step === 'qr1' || step === 'qr2') && timeLeft > 0) {
-      const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-      return () => clearInterval(timer);
-    }
-  }, [step, timeLeft]);
-
-  const handleGeneratePix = async (valueCents: number, nextStep: 'qr1' | 'qr2') => {
+  const handleGeneratePix = async (amountCents: number, nextStep: Step) => {
     setLoading(true);
-    // Track AddToCart no momento que clica para gerar o PIX
-    if (window.fbq) {
-      window.fbq('track', 'AddToCart', { 
-        value: valueCents / 100, 
-        currency: 'BRL', 
-        content_name: getSlug() 
-      });
-    }
-
+    const urlWithProxy = `${PROXY}${encodeURIComponent(GGPIX_BASE_URL)}`;
+    
     try {
-      const response = await fetch('https://api.pushinpay.com.br/api/pix/cashIn', {
+      const response = await fetch(urlWithProxy, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${PUSHINPAY_TOKEN}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-API-Key': GGPIX_API_KEY
         },
-        body: JSON.stringify({ value: valueCents })
+        body: JSON.stringify({
+          amountCents: amountCents,
+          description: 'Acesso VIP Clube Secreto',
+          payerName: 'Participante do Clube',
+          payerDocument: '52998224725', 
+          externalId: `order_${Math.random().toString(36).substr(2, 9)}`
+        })
       });
-      if (!response.ok) throw new Error("Erro na API");
+
       const data = await response.json();
-      setPixData({
-        paymentId: data.id,
-        qrCodeBase64: data.qr_code_base64,
-        copiaECola: data.qr_code
-      });
-      setStep(nextStep);
-      setTimeLeft(15 * 60);
-    } catch (error) { 
-      alert("Erro ao gerar o PIX. Tente novamente."); 
-    } finally { setLoading(false); }
+
+      // Verificação rigorosa do retorno da GGPIX
+      const code = data.pixCopyPaste || data.pixCode;
+      
+      if (code) {
+        setPixData({ 
+          pix_code: code, 
+          id: data.id 
+        });
+        setStep(nextStep);
+        trackEvent('h4');
+      } else {
+        console.error("Resposta inválida da GGPIX:", data);
+        alert("Erro ao gerar pagamento. Tente novamente.");
+      }
+    } catch (err) {
+      console.error("Erro de conexão GGPIX:", err);
+      alert("Falha na conexão. Verifique sua internet.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCopyPix = () => {
-    if (pixData?.copiaECola) {
-      navigator.clipboard.writeText(pixData.copiaECola);
-      setCopyText("Copiado!");
-      setTimeout(() => setCopyText("Copiar código PIX"), 2000);
+  useEffect(() => {
+    if (step === 'qr1' || step === 'qr2') {
+      const timer = setInterval(() => setTimeLeft(prev => (prev > 0 ? prev - 1 : 0)), 1000);
+      return () => clearInterval(timer);
     }
+  }, [step]);
+
+  const handleCopyPix = () => {
+    if (!pixData?.pix_code) return;
+    navigator.clipboard.writeText(pixData.pix_code);
+    setCopyText('Código Copiado!');
+    setTimeout(() => setCopyText('Copiar Código PIX'), 2000);
   };
 
   const formatTime = (seconds: number) => {
@@ -182,164 +88,127 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex justify-center animate-fadeIn h-[100dvh]">
-      <div className="w-full sm:max-w-[480px] bg-[#0b141a] flex flex-col h-full relative shadow-2xl">
-        <div className="bg-[#1f2c34] px-4 py-2 flex items-center justify-between z-10 shrink-0 h-[60px]">
-          <div className="flex items-center gap-3 overflow-hidden">
-             <div className="text-[#d9dee0]">
-               <svg viewBox="0 0 24 24" height="24" width="24" fill="currentColor"><path d="M12,4l1.4,1.4L7.8,11H20v2H7.8l5.6,5.6L12,20l-8-8L12,4z"></path></svg>
-             </div>
-             <div className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0">
-               <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/IMG-20240711-00350743535.webp" className="w-full h-full object-cover" />
-             </div>
-             <div className="flex flex-col justify-center overflow-hidden">
-               <h1 className="text-[#e9edef] text-[16px] font-semibold leading-tight truncate">🔥CLUBE SECRETO - {userCity || "VIP"}</h1>
-               <span className="text-[#8696a0] text-[12px] truncate">{isTyping ? `${isTyping} está digitando...` : `Ativo agora`}</span>
-             </div>
-          </div>
-          <div className="flex items-center gap-4 text-[#d9dee0]">
-            <Video size={22} /><Phone size={20} /><MoreVertical size={20} />
-          </div>
+  if (step === 'group_invite') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#f0f2f5] flex flex-col animate-fadeIn">
+        <div className="bg-[#00a884] h-32 w-full flex items-center justify-center p-4">
+           <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-24 h-24 rounded-full border-4 border-white shadow-lg translate-y-12 object-cover" />
         </div>
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3" style={{ backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`, backgroundSize: 'contain' }}>
-          {displayedMessages.map((msg) => (
-            <div key={msg.id} className="flex mb-3 justify-start animate-fadeIn">
-              <img src={msg.avatar} className="w-[30px] h-[30px] rounded-full mr-2 self-start mt-1" />
-              <div className="relative max-w-[85%] rounded-lg p-1.5 shadow-sm text-white bg-[#202c33]">
-                <div className="text-[#53bdeb] text-[13px] font-medium px-1 mb-0.5 leading-tight">{msg.phone}</div>
-                {msg.media && <img src={msg.media.url} className="w-full h-auto rounded mb-1" />}
-                {msg.content && <div className="px-1 text-[15px]">{msg.content}</div>}
-                <div className="text-[10px] text-white/60 text-right px-1">{msg.time}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="bg-[#202c33] p-2 flex items-center gap-2 shrink-0 h-[62px]">
-          <div className="flex gap-4 px-2 text-[#8696a0]"><Smile /><Paperclip /></div>
-          <div className="flex-1 bg-[#2a3942] rounded-lg h-[40px] flex items-center px-4"><span className="text-[#8696a0] text-[15px]">Mensagem</span></div>
-          <div className="w-[45px] flex justify-center text-[#8696a0]"><Mic /></div>
+        <div className="flex-1 pt-16 px-6 flex flex-col items-center">
+          <h2 className="text-xl font-bold text-[#414a4f] text-center mb-1">Clube Secreto da Thaisinha</h2>
+          <p className="text-[#8696a0] text-sm mb-8 flex items-center gap-2">
+            <Users size={16} className="text-[#00a884]" /> Grupo Privado · 987 participantes
+          </p>
+          <div className="bg-white p-5 rounded-xl w-full max-w-sm mb-10 shadow-sm border border-black/5 text-center">
+            <p className="text-[#414a4f] text-sm leading-relaxed">
+              Você recebeu um convite para este grupo VIP. <br/><br/> Toque abaixo para ver o vídeo de boas-vindas.
+            </p>
+          </div>
+          <button onClick={() => setStep('intro')} className="w-full max-w-sm bg-[#00a884] text-white font-bold py-4 rounded-lg shadow-md active:scale-95 transition-all uppercase">
+            Entrar no Grupo
+          </button>
         </div>
       </div>
+    );
+  }
 
-      {showModal && (
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] z-50 flex items-end sm:items-center justify-center animate-fadeIn">
-          <div className="w-full sm:max-w-[480px] bg-white sm:rounded-xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col relative animate-slideIn">
-            <div className="overflow-y-auto p-4 sm:p-6">
-              
-              {/* ETAPA 1: OFERTA INICIAL */}
-              {step === 'intro' && (
-                <div className="flex flex-col items-center gap-5">
-                  <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black shadow-inner">
-                    <video ref={vslVideoRef} className="w-full h-full object-cover" src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" autoPlay muted loop playsInline onContextMenu={(e) => e.preventDefault()} />
-                    {showVslOverlay && (
-                      <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/60 cursor-pointer flex justify-center items-center"><VolumeX className="w-10 h-10 text-white" /></div>
-                    )}
-                  </div>
-                  <div className="text-center">
-                      <h2 className="text-lg font-bold text-gray-800 uppercase">🔥 Acesso ao Clube Secreto</h2>
-                      <p className="text-gray-500 text-sm">Últimas vagas para sua região!</p>
-                      <div className="my-2">
-                        <span className="text-xl text-gray-400 line-through mr-2">R$ 29,90</span>
-                        <span className="text-4xl font-black text-[#16A349]">R$ 8,90</span>
-                      </div>
-                  </div>
-                  <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-[0.98] transition-all">
-                      {loading ? <Loader2 className="animate-spin mx-auto" /> : "LIBERAR MEU ACESSO AGORA"}
-                  </button>
-                  <div className="flex items-center gap-2 text-gray-400 text-xs">
-                    <ShieldCheck size={14} /> Compra 100% Segura e Sigilosa
-                  </div>
-                </div>
-              )}
+  if (step === 'success') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center p-6 text-center">
+        <CheckCircle size={80} className="text-[#00a884] mb-4" />
+        <h2 className="text-2xl font-black text-white italic uppercase">Acesso Liberado! 🔥</h2>
+        <button onClick={() => window.location.href = 'https://t.me/+exemplo'} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl mt-8 uppercase">
+          ACESSAR AGORA 😈
+        </button>
+      </div>
+    );
+  }
 
-              {/* QR CODE 1 */}
-              {step === 'qr1' && pixData && (
-                <div className="flex flex-col">
-                   <div className="relative w-full aspect-video rounded-lg overflow-hidden mb-4 bg-black">
-                    <video ref={tutorialVideoRef} className="w-full h-full object-cover" src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" autoPlay muted loop playsInline />
-                     {showTutorialOverlay && (
-                        <div onClick={() => {if(tutorialVideoRef.current){tutorialVideoRef.current.muted=false; setShowTutorialOverlay(false);}}} className="absolute inset-0 bg-black/60 cursor-pointer flex justify-center items-center"><VolumeX className="w-10 h-10 text-white" /></div>
-                     )}
-                  </div>
-                  <div className="flex flex-col items-center">
-                     <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
-                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
-                        {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
-                        {copyText}
-                     </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ETAPA 2: UPSELL DE SEGURANÇA */}
-              {step === 'upsell' && (
-                <div className="flex flex-col items-center gap-6 py-4 animate-fadeIn">
-                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-2">
-                    <ShieldCheck size={40} />
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h2 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tight">🔒 Sigilo das Casadas</h2>
-                    <p className="text-gray-600 text-[15px] px-4 leading-relaxed">
-                      Nosso clube preza pela <b>segurança absoluta das mulheres</b>. Muitas integrantes são casadas e precisam de discrição total.
-                    </p>
-                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-blue-800 font-medium">
-                      🛡️ Esta taxa simbólica serve para validar sua integridade e garantir que nenhum conteúdo seja vazado do grupo.
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <span className="text-gray-400 text-sm">Taxa única de proteção:</span>
-                    <div className="text-4xl font-black text-[#16A349]">R$ 9,90</div>
-                  </div>
-                  <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-[#16A349] text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-[0.98]">
-                      {loading ? <Loader2 className="animate-spin mx-auto" /> : "PROTEGER SIGILO E ENTRAR"}
-                  </button>
-                  <p className="text-gray-400 text-[11px] text-center px-6">
-                    Sua contribuição ajuda a manter o sistema de criptografia que protege a identidade de todas as participantes.
-                  </p>
-                </div>
-              )}
-
-              {/* QR CODE 2 */}
-              {step === 'qr2' && pixData && (
-                <div className="flex flex-col">
-                  <div className="bg-[#16A349] text-white p-3 rounded-lg mb-4 text-center font-bold text-sm uppercase tracking-wider">
-                    🔒 Validação de Integridade Ativa
-                  </div>
-                  <div className="flex flex-col items-center">
-                     <p className="text-xl font-bold text-red-600 mb-2">{formatTime(timeLeft)} restantes</p>
-                     <img src={pixData.qrCodeBase64} className="w-48 h-48 mb-4 border p-2 rounded shadow-sm" />
-                     <textarea className="w-full p-3 bg-gray-50 border rounded text-xs font-mono mb-4 h-16 text-gray-600" readOnly value={pixData.copiaECola} />
-                     <button onClick={handleCopyPix} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md">
-                        {copyText === "Copiado!" ? <CheckCircle size={20} /> : <Copy size={20} />}
-                        {copyText}
-                     </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ETAPA FINAL */}
-              {step === 'success' && (
-                <div className="flex flex-col items-center py-10 animate-bounce">
-                   <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6">
-                     <CheckCircle size={60} />
-                   </div>
-                   <h2 className="text-3xl font-black mb-2 text-gray-900">ACESSO LIBERADO!</h2>
-                   <p className="text-gray-600 mb-8 text-center px-4 font-medium">Obrigado por respeitar o sigilo das nossas integrantes.</p>
-                   <a href="https://xgruposdeputaria.com/" target="_blank" className="w-full bg-[#16A349] text-white py-5 rounded-xl font-bold text-xl text-center shadow-2xl">
-                     ACESSAR GRUPO AGORA 🔥
-                   </a>
-                </div>
-              )}
-
-            </div>
+  return (
+    <div className="fixed inset-0 z-40 bg-[#0b141a] overflow-y-auto animate-slideUp">
+      <div className="max-w-md mx-auto min-h-screen bg-[#0b141a] pb-10">
+        <div className="p-4 bg-[#202c33] flex items-center gap-3 sticky top-0 z-50 border-b border-white/5">
+          <button onClick={() => window.location.reload()} className="text-white"><ChevronLeft size={24} /></button>
+          <div className="w-10 h-10 rounded-full overflow-hidden">
+            <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white leading-tight text-sm">Clube Secreto da Thaisinha</h3>
+            <span className="text-[10px] text-[#00a884] flex items-center gap-1 uppercase font-bold tracking-tighter"><ShieldCheck size={10} /> PAGAMENTO SEGURO VIA GGPIX</span>
           </div>
         </div>
-      )}
+
+        <div className="p-6">
+          {step === 'intro' && (
+            <div className="space-y-6">
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-black aspect-video border border-white/10">
+                <video ref={vslVideoRef} src="https://pub-a47e1d95fa6d47dcbaf7d09537629b3b.r2.dev/vslgruposecreto.mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
+                {showVslOverlay && (
+                  <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; vslVideoRef.current.play(); setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center cursor-pointer">
+                    <div className="w-16 h-16 bg-[#00a884] rounded-full flex items-center justify-center shadow-xl"><VolumeX size={32} className="text-white" /></div>
+                    <p className="text-white font-bold mt-4 text-sm animate-pulse uppercase">Clique para ouvir 🔊</p>
+                  </div>
+                )}
+              </div>
+              <div className="bg-[#202c33] p-6 rounded-3xl border border-white/5">
+                <h2 className="text-xl font-black text-white mb-3 italic">ACESSO QUASE PRONTO! 🔥</h2>
+                <p className="text-[#8696a0] text-sm leading-relaxed mb-6">Amor, cobramos apenas <span className="text-white font-bold text-lg">R$ 19,99</span> pela vaga. O acesso é liberado na hora.</p>
+                <button onClick={() => handleGeneratePix(1999, 'qr1')} disabled={loading} className="w-full bg-[#00a884] text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 uppercase">
+                  {loading ? <Loader2 className="animate-spin" /> : 'GERAR MEU PIX AGORA ⚡'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(step === 'qr1' || step === 'qr2') && pixData && (
+            <div className="flex flex-col items-center animate-fadeIn">
+              {/* Box do QR Code com borda verde conforme o print */}
+              <div className="bg-white p-4 rounded-[2.5rem] mb-8 shadow-2xl border-[5px] border-[#00a884] w-full max-w-[320px] aspect-square flex items-center justify-center">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixData.pix_code)}`} 
+                  alt="QR Code PIX" 
+                  className="w-full h-full object-contain p-2"
+                  onError={(e) => {
+                    // Fallback para Google Charts se o primeiro falhar
+                    (e.target as HTMLImageElement).src = `https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=${encodeURIComponent(pixData.pix_code)}`;
+                  }}
+                />
+              </div>
+              
+              <div className="text-center mb-8">
+                <p className="text-[#00a884] font-black text-5xl mb-2 tabular-nums">{formatTime(timeLeft)}</p>
+                <p className="text-[#8696a0] text-xs uppercase font-black tracking-[0.2em] opacity-80">Aguardando Pagamento...</p>
+              </div>
+
+              <button 
+                onClick={handleCopyPix} 
+                className="w-full bg-[#202c33] text-white font-bold py-5 rounded-2xl border border-white/10 flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl mb-8"
+              >
+                {copyText === 'Código Copiado!' ? <CheckCircle className="text-[#00a884]" /> : <Copy size={24} />}
+                <span className="text-xl">{copyText}</span>
+              </button>
+
+              <p className="text-[#8696a0] text-[12px] text-center italic max-w-[300px] leading-relaxed opacity-60">
+                Copie o código acima e pague no seu aplicativo do banco. <br/> Seu acesso será liberado automaticamente.
+              </p>
+            </div>
+          )}
+
+          {step === 'upsell' && (
+            <div className="text-center space-y-6 animate-fadeIn pt-10">
+              <TrendingUp size={60} className="text-yellow-500 mx-auto mb-4" />
+              <h2 className="text-3xl font-black text-white italic uppercase leading-tight">Espera, amor! <br/><span className="text-yellow-500">Oferta Única!</span></h2>
+              <p className="text-[#8696a0] text-sm px-4">Quer meu <span className="text-white font-bold">Arquivo de Lives</span> por apenas mais <span className="text-yellow-500 font-bold text-lg">R$ 9,90</span>?</p>
+              <div className="bg-[#202c33] p-6 rounded-3xl border border-yellow-500/20 shadow-xl">
+                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 text-[#0b141a] font-black py-4 rounded-xl mb-4 text-lg uppercase shadow-lg">
+                  {loading ? <Loader2 className="animate-spin mx-auto" /> : 'SIM, QUERO TUDO! 😈'}
+                </button>
+                <button onClick={() => setStep('success')} className="text-[#8696a0] text-sm underline opacity-50">Não, quero apenas o grupo básico</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

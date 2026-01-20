@@ -5,8 +5,8 @@ import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
 const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
-// Corrigido: Para consultar status de PIX recebido (IN), usamos o endpoint /in/
-const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/pix/in"; 
+// Corrigido: Conforme documentação GGPIX, a consulta é em /v1/transactions/{id}
+const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/transactions"; 
 const PROXY = "https://corsproxy.io/?";
 const SITE_URL = "https://meninasonline.vercel.app";
 
@@ -71,7 +71,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     if ((step === 'qr1' || step === 'qr2') && pixData?.id) {
       interval = setInterval(async () => {
         try {
-          // Consultando no endpoint /in/{id} para evitar o erro 404
+          // Ajustado para o endpoint de transações
           const url = `${PROXY}${encodeURIComponent(`${GGPIX_STATUS_URL}/${pixData.id}`)}`;
           const response = await fetch(url, { 
             headers: { 
@@ -94,9 +94,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               setStep('success');
             }
           }
-        } catch (e) { 
-          // Silencioso para não poluir console
-        }
+        } catch (e) { }
       }, 5000);
     }
     return () => clearInterval(interval);

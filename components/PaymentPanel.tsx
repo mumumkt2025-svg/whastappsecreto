@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, MoreVertical, Video, Phone, Mic, Info, Image as ImageIcon } from 'lucide-react';
+import { Copy, CheckCircle, Loader2, VolumeX, ShieldCheck, ChevronLeft, TrendingUp, Users, MoreVertical, Video, Phone, Mic, Info, Play } from 'lucide-react';
 import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
@@ -29,7 +29,6 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // MENSAGENS EXATAS DO SEU HTML
   const simMessages = [
     { name: "+55 19 94238-9726", text: "Meu corninho nao para de me ligar gente, afff", time: "14:02", color: "#00a884" },
     { name: "+55 19 94238-9726", text: "Vou fazer ele esperar, olha como eu to agora gente", time: "14:02", color: "#00a884" },
@@ -50,7 +49,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           clearInterval(interval);
           setTimeout(() => {
             setIsThaisinhaTyping(true);
-            setTimeout(() => setStep('intro'), 2500);
+            setTimeout(() => {
+              setIsThaisinhaTyping(false);
+              setStep('intro');
+            }, 3000);
           }, 1500);
         }
       }, 2000);
@@ -148,7 +150,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
       <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col animate-fadeIn overflow-hidden">
         <div className="p-3 bg-[#202c33] flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-3">
-            <ChevronLeft size={24} className="text-white" />
+            <ChevronLeft size={24} className="text-white" onClick={() => window.location.reload()} />
             <div className="w-10 h-10 rounded-full overflow-hidden">
               <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-full h-full object-cover" />
             </div>
@@ -166,7 +168,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
             <div key={idx} className="flex flex-col items-start animate-slideUp">
               <div className="bg-[#202c33] p-2 px-3 rounded-xl rounded-tl-none max-w-[85%] shadow-md border-l-4" style={{ borderLeftColor: msg.color }}>
                 <p className="text-[11px] font-black uppercase mb-1" style={{ color: msg.color }}>{msg.name}</p>
-                {msg.text && <p className="text-white text-[14.5px] leading-relaxed">{msg.text}</p>}
+                {msg.text && <p className="text-white text-[14.5px] font-normal leading-relaxed">{msg.text}</p>}
                 {msg.image && <img src={msg.image} className="rounded-lg w-full mt-1 mb-1 border border-white/5" alt="Mídia" />}
                 <p className="text-[10px] text-white/30 text-right mt-1">{msg.time}</p>
               </div>
@@ -184,9 +186,10 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     );
   }
 
+  // TELA FINAL DE SUCESSO
   if (step === 'success') {
     return (
-      <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center p-6 text-center">
+      <div className="fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
         <div className="w-24 h-24 bg-[#00a884]/20 rounded-full flex items-center justify-center mb-6">
           <CheckCircle size={60} className="text-[#00a884]" />
         </div>
@@ -200,83 +203,120 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-[#0b141a] overflow-y-auto animate-slideUp">
-      <div className="max-w-md mx-auto min-h-screen bg-[#0b141a] pb-10">
-        <div className="p-4 bg-[#202c33] flex items-center gap-3 sticky top-0 z-50 border-b border-white/5">
+    <div className="fixed inset-0 z-50 bg-[#0b141a] overflow-y-auto animate-fadeIn">
+      <div className="max-w-md mx-auto min-h-screen bg-[#0b141a] pb-10 flex flex-col">
+        {/* Header fixo para todas as etapas de pagamento */}
+        <div className="p-4 bg-[#202c33] flex items-center gap-3 sticky top-0 z-50 border-b border-white/5 shadow-md">
           <button onClick={() => setStep('group_chat_sim')} className="text-white"><ChevronLeft size={24} /></button>
-          <div className="w-10 h-10 rounded-full overflow-hidden">
+          <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10">
             <img src="https://midia.jdfnu287h7dujn2jndjsifd.com/perfil.webp" className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
-            <h3 className="font-bold text-white text-sm">🔥CLUBE SECRETO - {userCity}</h3>
-            <span className="text-[10px] text-[#00a884] flex items-center gap-1 uppercase font-bold tracking-tighter"><ShieldCheck size={10} /> PAGAMENTO SEGURO</span>
+            <h3 className="font-bold text-white text-sm uppercase tracking-tight">🔥CLUBE SECRETO - {userCity}</h3>
+            <span className="text-[10px] text-[#00a884] flex items-center gap-1 uppercase font-black tracking-tighter italic">
+              <ShieldCheck size={10} /> Pagamento 100% Seguro
+            </span>
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-5 flex-1 flex flex-col">
           {step === 'intro' && (
-            <div className="space-y-6 animate-fadeIn">
-              <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-black aspect-video border border-white/10">
-                <video ref={vslVideoRef} src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/1110(4).mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
+            <div className="space-y-6 animate-fadeIn flex flex-col flex-1">
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-black aspect-video border border-white/10 ring-1 ring-white/10">
+                <video 
+                  ref={vslVideoRef} 
+                  src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/1110(4).mp4" 
+                  className="w-full h-full object-cover" 
+                  autoPlay 
+                  muted 
+                  loop 
+                  playsInline 
+                />
                 {showVslOverlay && (
-                  <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; vslVideoRef.current.play(); setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center cursor-pointer">
-                    <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center shadow-2xl"><VolumeX size={40} className="text-white" /></div>
-                    <p className="text-white font-black mt-6 text-sm animate-pulse uppercase tracking-widest text-center">Clique para ouvir 🔊</p>
+                  <div onClick={() => { if(vslVideoRef.current){vslVideoRef.current.muted=false; vslVideoRef.current.play(); setShowVslOverlay(false);}}} className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center cursor-pointer transition-opacity duration-300">
+                    <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(0,168,132,0.5)] scale-110">
+                      <VolumeX size={40} className="text-white" />
+                    </div>
+                    <p className="text-white font-black mt-6 text-[13px] animate-pulse uppercase tracking-[0.2em] text-center px-4">Toque para ouvir a Thaisinha 🔊</p>
                   </div>
                 )}
               </div>
-              <div className="bg-[#202c33] p-6 rounded-[2rem] border border-white/5 text-center">
-                <h2 className="text-xl font-black text-white mb-2 italic uppercase">ACESSO QUASE PRONTO! 🔥</h2>
-                <p className="text-[#8696a0] text-sm leading-relaxed mb-6 italic">Cobramos apenas <span className="text-white font-bold text-lg">R$ 8,90</span> para garantir que apenas pessoas reais entrem no grupo.</p>
-                <button onClick={() => handleGeneratePix(890, 'qr1')} disabled={loading} className="w-full bg-[#00a884] text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 uppercase shadow-xl active:scale-95 transition-all">
-                  {loading ? <Loader2 className="animate-spin" /> : 'GERAR MEU PIX AGORA ⚡'}
+
+              <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-white/5 text-center shadow-2xl mt-auto ring-1 ring-white/5">
+                <div className="mb-4">
+                  <span className="bg-[#00a884]/10 text-[#00a884] text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest border border-[#00a884]/20">Acesso Vitalício</span>
+                </div>
+                <h2 className="text-2xl font-black text-white mb-2 italic uppercase leading-none">QUASE LÁ, AMOR! 🔥</h2>
+                <p className="text-[#8696a0] text-sm leading-relaxed mb-8 italic px-2">
+                  Você está a um passo de ver tudo. Pague apenas <span className="text-white font-black text-xl">R$ 8,90</span> e entre no grupo agora.
+                </p>
+                <button 
+                  onClick={() => handleGeneratePix(890, 'qr1')} 
+                  disabled={loading} 
+                  className="w-full bg-[#00a884] hover:bg-[#00c298] text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 uppercase shadow-[0_10px_20px_rgba(0,168,132,0.3)] active:scale-[0.97] transition-all text-lg"
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : 'QUERO ENTRAR NO GRUPO ⚡'}
                 </button>
               </div>
             </div>
           )}
 
           {(step === 'qr1' || step === 'qr2') && pixData && (
-            <div className="flex flex-col items-center animate-fadeIn">
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-black aspect-video w-full mb-6 border border-white/5">
-                <video ref={tutorialVideoRef} src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" className="w-full h-full object-cover" autoPlay muted loop playsInline />
-                <div onClick={() => { if(tutorialVideoRef.current){tutorialVideoRef.current.muted=false;}}} className="absolute top-3 right-3 bg-black/50 p-2 rounded-full cursor-pointer"><VolumeX size={20} className="text-white" /></div>
+            <div className="flex flex-col items-center animate-fadeIn space-y-6">
+              {/* Tutorial do PIX */}
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-black aspect-video w-full border border-white/5">
+                <video 
+                  ref={tutorialVideoRef} 
+                  src="https://pub-9ad786fb39ec4b43b2905a55edcb38d9.r2.dev/tutorial-pix.mp4" 
+                  className="w-full h-full object-cover" 
+                  autoPlay 
+                  muted 
+                  loop 
+                  playsInline 
+                />
+                <div onClick={() => { if(tutorialVideoRef.current){tutorialVideoRef.current.muted=false;}}} className="absolute top-3 right-3 bg-black/60 p-2 rounded-full cursor-pointer text-white">
+                   <VolumeX size={20} />
+                </div>
               </div>
 
-              <div className="bg-white p-5 rounded-[3rem] mb-6 shadow-2xl border-[6px] border-[#00a884] w-full max-w-[280px] aspect-square flex items-center justify-center">
+              {/* QR Code */}
+              <div className="bg-white p-5 rounded-[3rem] shadow-2xl border-[8px] border-[#00a884] w-full max-w-[280px] aspect-square flex items-center justify-center ring-4 ring-black/20">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixData.pix_code)}`} alt="QR Code" className="w-full h-full object-contain" />
               </div>
               
-              <div className="text-center mb-8">
-                <p className="text-[#8696a0] text-xs uppercase font-black tracking-widest mb-2">Seu PIX expira em:</p>
-                <p className="text-[#00a884] font-black text-5xl tabular-nums drop-shadow-sm">{formatTime(timeLeft)}</p>
+              <div className="text-center w-full">
+                <div className="flex items-center justify-center gap-2 text-[#8696a0] text-[11px] uppercase font-black tracking-widest mb-1">
+                  <Loader2 size={12} className="animate-spin" /> Aguardando pagamento
+                </div>
+                <p className="text-[#00a884] font-black text-5xl tabular-nums drop-shadow-md">{formatTime(timeLeft)}</p>
               </div>
 
-              <button onClick={handleCopyPix} className="w-full bg-[#202c33] text-white font-bold py-5 rounded-3xl border border-white/10 flex items-center justify-center gap-4 active:scale-95 transition-all shadow-2xl mb-8 group">
-                <Copy size={24} className="group-hover:rotate-6 transition-transform" />
-                <span className="text-xl uppercase tracking-wide">{copyText}</span>
+              {/* Botão Copia e Cola */}
+              <button onClick={handleCopyPix} className="w-full bg-[#202c33] text-white font-bold py-5 rounded-3xl border border-white/10 flex items-center justify-center gap-4 active:scale-[0.98] transition-all shadow-xl group">
+                <Copy size={24} className="group-hover:scale-110 transition-transform" />
+                <span className="text-lg uppercase tracking-wider">{copyText}</span>
               </button>
               
-              <div className="bg-[#00a884]/10 border border-[#00a884]/20 p-5 rounded-2xl flex items-center gap-4 w-full">
-                <Loader2 size={24} className="text-[#00a884] animate-spin" />
-                <p className="text-[#00a884] text-[11px] font-black uppercase tracking-tight">Detectando pagamento... Não feche esta tela!</p>
+              <div className="flex items-center gap-3 text-[#8696a0] text-[10px] uppercase font-bold italic opacity-60">
+                <ShieldCheck size={14} /> Ambiente Seguro & Criptografado
               </div>
             </div>
           )}
 
           {step === 'upsell' && (
-            <div className="text-center space-y-6 animate-fadeIn pt-6">
-              <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-yellow-500/20 shadow-xl">
-                <TrendingUp size={44} className="text-yellow-500" />
+            <div className="text-center space-y-6 animate-fadeIn pt-6 flex flex-col flex-1">
+              <div className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-2 border border-yellow-500/20 shadow-[0_0_40px_rgba(234,179,8,0.2)]">
+                <TrendingUp size={48} className="text-yellow-500 animate-bounce" />
               </div>
-              <h2 className="text-4xl font-black text-white italic uppercase leading-tight">ESPERA, AMOR! 🔥</h2>
+              <h2 className="text-4xl font-black text-white italic uppercase leading-none tracking-tighter">ESPERA, AMOR! 🔥</h2>
               <p className="text-[#8696a0] text-lg px-4 italic leading-tight">
-                Vi que você pagou o grupo, mas quer levar também meu <span className="text-white font-bold">Arquivo de Lives Sem Censura</span> por apenas mais <span className="text-yellow-500 font-black text-3xl">R$ 9,90</span>?
+                Acesso ao grupo confirmado! Mas você quer levar também meu <span className="text-white font-bold">Arquivo de Lives Gravadas</span> por apenas mais <span className="text-yellow-500 font-black text-3xl">R$ 9,90</span>?
               </p>
-              <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl">
-                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-5 rounded-2xl mb-6 text-xl uppercase shadow-lg active:scale-95 transition-all">
-                  {loading ? <Loader2 className="animate-spin mx-auto" /> : 'SIM, QUERO TUDO AGORA! 😈'}
+              <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl mt-auto">
+                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-5 rounded-2xl mb-6 text-xl uppercase shadow-[0_10px_20px_rgba(234,179,8,0.3)] active:scale-[0.97] transition-all">
+                  {loading ? <Loader2 className="animate-spin mx-auto" /> : 'SIM, QUERO TUDO! 😈'}
                 </button>
-                <button onClick={() => setStep('success')} className="text-[#8696a0] text-sm underline underline-offset-8 opacity-50 hover:text-white transition-all">Não, quero apenas o acesso básico</button>
+                <button onClick={() => setStep('success')} className="text-[#8696a0] text-xs font-bold uppercase tracking-widest underline underline-offset-8 opacity-40 hover:opacity-100 transition-all">Não, levar apenas o acesso básico</button>
               </div>
             </div>
           )}

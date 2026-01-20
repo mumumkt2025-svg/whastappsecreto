@@ -5,7 +5,6 @@ import { trackEvent } from '../services/tracking';
 
 const GGPIX_API_KEY = "gk_bd4a27e1ea571c80d04fbad41535c62a8e960cfbc1744e4e";
 const GGPIX_BASE_URL = "https://ggpixapi.com/api/v1/pix/in";
-// Corrigido: Conforme documentação GGPIX, a consulta é em /v1/transactions/{id}
 const GGPIX_STATUS_URL = "https://ggpixapi.com/api/v1/transactions"; 
 const PROXY = "https://corsproxy.io/?";
 const SITE_URL = "https://meninasonline.vercel.app";
@@ -71,7 +70,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
     if ((step === 'qr1' || step === 'qr2') && pixData?.id) {
       interval = setInterval(async () => {
         try {
-          // Ajustado para o endpoint de transações
+          // CONSULTA STATUS: GET /api/v1/transactions/:id
           const url = `${PROXY}${encodeURIComponent(`${GGPIX_STATUS_URL}/${pixData.id}`)}`;
           const response = await fetch(url, { 
             headers: { 
@@ -83,6 +82,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
           if (!response.ok) return;
 
           const data = await response.json();
+          // Status 'COMPLETE' conforme documentação
           const status = (data.status || "").toUpperCase();
 
           if (status === 'COMPLETE' || status === 'PAID' || status === 'COMPLETED') {
@@ -94,7 +94,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
               setStep('success');
             }
           }
-        } catch (e) { }
+        } catch (e) {}
       }, 5000);
     }
     return () => clearInterval(interval);
@@ -102,23 +102,31 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
 
   const handleGeneratePix = async (amountCents: number, nextStep: Step) => {
     setLoading(true);
+    // PAYLOAD EXATO CONFORME DOCUMENTAÇÃO
+    const payload = {
+      amountCents,
+      description: amountCents === 890 ? 'Acesso VIP Clube Secreto' : 'Pack Lives Gravadas',
+      payerName: 'Participante do Clube',
+      payerDocument: '52998224725', // CPF válido (apenas números)
+      externalId: `order_${Date.now()}`,
+      webhookUrl: `${SITE_URL}/api/webhook`
+    };
+
     const urlWithProxy = `${PROXY}${encodeURIComponent(GGPIX_BASE_URL)}`;
     try {
       const response = await fetch(urlWithProxy, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': GGPIX_API_KEY },
-        body: JSON.stringify({
-          amountCents,
-          description: amountCents === 890 ? 'Acesso VIP Clube Secreto' : 'Pack Lives Gravadas',
-          payerName: 'Participante do Clube',
-          payerDocument: '52998224725', 
-          externalId: `order_${Date.now()}`,
-          webhookUrl: `${SITE_URL}/api/webhook`
-        })
+        headers: { 
+          'Content-Type': 'application/json', 
+          'X-API-Key': GGPIX_API_KEY 
+        },
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
+      
+      // Resposta 201 retorna: { id, status, amount, pixCode, pixCopyPaste, ... }
       const code = data.pixCopyPaste || data.pixCode;
-      if (code) {
+      if (code && data.id) {
         setPixData({ pix_code: code, id: data.id });
         setStep(nextStep);
         trackEvent(nextStep === 'qr1' ? 'h4' : 'h5');
@@ -318,7 +326,7 @@ export const PaymentPanel: React.FC<PaymentPanelProps> = ({ userCity, userDDD })
                 Pagamento do grupo confirmado! Quer levar também meu <span className="text-white font-bold">Arquivo de Lives</span> por apenas mais <span className="text-yellow-500 font-black text-4xl">R$ 9,90</span>?
               </p>
               <div className="bg-[#202c33] p-8 rounded-[2.5rem] border border-yellow-500/20 shadow-2xl mt-auto ring-1 ring-yellow-500/10">
-                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-6 rounded-2xl mb-6 text-2xl uppercase shadow-[0_10px_30px_rgba(234,179,8,0.4)] active:scale-[0.97] transition-all italic">
+                <button onClick={() => handleGeneratePix(990, 'qr2')} disabled={loading} className="w-full bg-yellow-500 hover:bg-yellow-400 text-[#0b141a] font-black py-6 rounded-2xl mb-6 text-2xl uppercase shadow-[0_10px_30_rgba(234,179,8,0.4)] active:scale-[0.97] transition-all italic">
                   {loading ? <Loader2 className="animate-spin mx-auto" /> : 'SIM, QUERO TUDO! 😈'}
                 </button>
                 <button onClick={() => setStep('success')} className="text-[#8696a0] text-[11px] font-black uppercase tracking-widest underline underline-offset-8 opacity-40 hover:opacity-100 italic transition-all">Não, levar apenas o básico</button>
